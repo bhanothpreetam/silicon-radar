@@ -1,0 +1,39 @@
+# Environment and secrets
+.env
+*.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Database
+*.db
+*.sqlite
+
+# Logs
+logs/
+*.log
+
+# twscrape data (contains cookies/session)
+accounts.db
+twscrape_*.db
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/settings.json
+.idea/
+
+# Keep these:
+# .env.example → YES commit this (no real secrets)
+# prompts/ → YES commit
+# .github/ → YES commit
