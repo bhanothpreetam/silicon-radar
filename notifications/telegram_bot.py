@@ -48,55 +48,48 @@ NOTIFICATION_HEADER = {
 }
 
 
-def format_intelligence_card(card: dict, level: str, url: str) -> str:
-    """Format a card into Telegram markdown message."""
+def escape_html(text: str) -> str:
+    if not text:
+        return ""
+    return text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
 
-    # Tech layer badges
+
+def format_intelligence_card(card: dict, level: str, url: str) -> str:
     layers = card.get("tech_layer") or []
     layer_str = " ".join(LAYER_EMOJI.get(l, "•") for l in layers[:4]) if layers else ""
-
     header = NOTIFICATION_HEADER.get(level, "📡 Silicon Radar")
-    score_bar = "█" * int(card.get("importance_score", 0.5) * 10) + "░" * (10 - int(card.get("importance_score", 0.5) * 10))
+    score = card.get("importance_score", 0.5)
+    score_bar = "█" * int(score * 10) + "░" * (10 - int(score * 10))
 
-    msg = f"""
-{header} {layer_str}
+    def e(text):
+        return escape_html(str(text) if text else "")
 
-*{card.get('one_line_summary', 'New signal')}*
-
-*What happened:*
-{card.get('what_happened', '')}
-
-*Why it matters technically:*
-{card.get('why_technical', '')}
-
-*Why it matters strategically:*
-{card.get('why_strategic', '')}
-
-*ELI-New-Grad explanation:*
-{card.get('eli5_explanation', '')}
-
-*Textbook connection:*
-{card.get('textbook_bridge', '')}
-
-*Rabbit hole →* {card.get('rabbit_hole', '')}
-
-📊 Signal strength: [{score_bar}] {card.get('importance_score', 0):.0%}
-
-[Read source]({url})
-"""
-    return msg.strip()
+    return (
+        f"{header} {layer_str}\n\n"
+        f"<b>{e(card.get('one_line_summary', 'New signal'))}</b>\n\n"
+        f"<b>What happened:</b>\n{e(card.get('what_happened', ''))}\n\n"
+        f"<b>Why it matters technically:</b>\n{e(card.get('why_technical', ''))}\n\n"
+        f"<b>Why it matters strategically:</b>\n{e(card.get('why_strategic', ''))}\n\n"
+        f"<b>ELI-New-Grad:</b>\n{e(card.get('eli5_explanation', ''))}\n\n"
+        f"<b>Textbook connection:</b>\n{e(card.get('textbook_bridge', ''))}\n\n"
+        f"<b>Rabbit hole →</b> {e(card.get('rabbit_hole', ''))}\n\n"
+        f"📊 [{score_bar}] {score:.0%}\n\n"
+        f"<a href='{escape_html(url)}'>Read source</a>"
+    )[:4000]
 
 
 def format_ping(card: dict, url: str) -> str:
-    """Short format for low-importance ping notifications."""
     layers = card.get("tech_layer") or []
     layer_str = " ".join(LAYER_EMOJI.get(l, "•") for l in layers[:3]) if layers else ""
 
+    def e(t):
+        return escape_html(str(t) if t else "")
+
     return (
         f"💬 {layer_str}\n"
-        f"*{card.get('one_line_summary', 'New signal')}*\n\n"
-        f"{card.get('why_technical', '')[:200]}...\n\n"
-        f"[Read]({url})"
+        f"<b>{e(card.get('one_line_summary', 'New signal'))}</b>\n\n"
+        f"{e(card.get('why_technical', ''))[:300]}...\n\n"
+        f"<a href='{escape_html(url)}'>Read</a>"
     )
 
 
@@ -126,13 +119,13 @@ async def send_notification(bot: Bot, card: dict, card_id: int, url: str):
     # Telegram hard limit is 4096 chars; truncate gracefully
     MAX_LEN = 4000
     if len(text) > MAX_LEN:
-        text = text[:MAX_LEN] + "\n…_(truncated)_"
+        text = text[:MAX_LEN] + "\n…(truncated)"
 
     try:
         msg = await bot.send_message(
             chat_id=config.TELEGRAM_CHAT_ID,
             text=text,
-            parse_mode=ParseMode.MARKDOWN,
+            parse_mode=ParseMode.HTML,
             reply_markup=make_feedback_keyboard(card_id),
             disable_web_page_preview=True,
         )
@@ -156,20 +149,23 @@ async def cmd_digest(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("No high-signal items in the last 24 hours. Check back later!")
         return
 
-    lines = ["*🧠 Silicon Radar Daily Digest*\n"]
+    lines = ["<b>🧠 Silicon Radar Daily Digest</b>\n"]
     for i, card in enumerate(cards, 1):
         layers = card.get("tech_layer") or []
         emoji = LAYER_EMOJI.get(layers[0], "•") if layers else "•"
         score = card.get("importance_score", 0)
+        summary = escape_html(card.get('one_line_summary', card.get('title', ''))[:80])
+        strategic = escape_html(card.get('why_strategic', '')[:100])
+        url = escape_html(card.get('url', ''))
         lines.append(
-            f"{i}. {emoji} *{card.get('one_line_summary', card.get('title', ''))[:80]}*\n"
-            f"   _{card.get('why_strategic', '')[:100]}..._\n"
-            f"   [Source]({card.get('url', '')}) | Signal: {score:.0%}\n"
+            f"{i}. {emoji} <b>{summary}</b>\n"
+            f"   <i>{strategic}...</i>\n"
+            f"   <a href='{url}'>Source</a> | Signal: {score:.0%}\n"
         )
 
     await update.message.reply_text(
         "\n".join(lines),
-        parse_mode=ParseMode.MARKDOWN,
+        parse_mode=ParseMode.HTML,
         disable_web_page_preview=True,
     )
 
@@ -187,13 +183,13 @@ async def cmd_quiz(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     card = random.choice(quiz_cards[:5])
 
     text = (
-        f"*🧠 Quiz Time*\n\n"
-        f"Context: _{card.get('one_line_summary', '')}._\n\n"
-        f"*Question:*\n{card.get('quiz_question', '')}\n\n"
-        f"_Reply /answer to see the answer._"
+        f"<b>🧠 Quiz Time</b>\n\n"
+        f"Context: <i>{escape_html(card.get('one_line_summary', ''))}.</i>\n\n"
+        f"<b>Question:</b>\n{escape_html(card.get('quiz_question', ''))}\n\n"
+        f"<i>Reply /answer to see the answer.</i>"
     )
     ctx.user_data["pending_answer"] = card.get("quiz_answer", "")
-    await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
+    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
 
 
 async def cmd_answer(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -204,8 +200,8 @@ async def cmd_answer(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
 
     await update.message.reply_text(
-        f"*Answer:*\n{answer}",
-        parse_mode=ParseMode.MARKDOWN
+        f"<b>Answer:</b>\n{escape_html(answer)}",
+        parse_mode=ParseMode.HTML,
     )
 
 
@@ -219,13 +215,15 @@ async def cmd_rabbit(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("No rabbit holes queued. Run the pipeline first!")
         return
 
-    lines = ["*🕳️ This Week's Rabbit Holes*\n"]
+    lines = ["<b>🕳️ This Week's Rabbit Holes</b>\n"]
     for i, (hole, context, url) in enumerate(rabbits[:5], 1):
-        lines.append(f"{i}. {hole}\n   ↳ From: [{context[:60]}...]({url})\n")
+        ctx_short = escape_html((context or '')[:60])
+        url_safe = escape_html(url or '')
+        lines.append(f"{i}. {escape_html(hole)}\n   ↳ From: <a href='{url_safe}'>{ctx_short}...</a>\n")
 
     await update.message.reply_text(
         "\n".join(lines),
-        parse_mode=ParseMode.MARKDOWN,
+        parse_mode=ParseMode.HTML,
         disable_web_page_preview=True,
     )
 
@@ -248,11 +246,14 @@ async def cmd_flashcards(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     import random
     sample = random.sample(flashcards, min(3, len(flashcards)))
-    lines = ["*📇 Today's Flashcards*\n"]
+    lines = ["<b>📇 Today's Flashcards</b>\n"]
     for i, (q, a) in enumerate(sample, 1):
-        lines.append(f"*Q{i}:* {q}\n_A:_ ||{a}||\n")  # Telegram spoiler for answer
+        lines.append(
+            f"<b>Q{i}:</b> {escape_html(q)}\n"
+            f"<i>A:</i> <tg-spoiler>{escape_html(a)}</tg-spoiler>\n"
+        )
 
-    await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
+    await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML)
 
 
 async def cmd_stats(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -383,7 +384,7 @@ async def cmd_health(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "*Silicon Radar Commands*\n\n"
+        "<b>Silicon Radar Commands</b>\n\n"
         "/digest — Today's top signals\n"
         "/quiz — Test your knowledge\n"
         "/answer — Reveal quiz answer\n"
@@ -392,7 +393,7 @@ async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "/stats — API usage and pipeline stats\n"
         "/health — System health check\n"
         "/help — This message",
-        parse_mode=ParseMode.MARKDOWN,
+        parse_mode=ParseMode.HTML,
     )
 
 
@@ -445,33 +446,35 @@ async def send_pending_notifications():
 async def send_daily_digest():
     """Send the daily digest. Run at 9 AM via cron."""
     bot = Bot(token=config.TELEGRAM_TOKEN)
-    app = Application.builder().token(config.TELEGRAM_TOKEN).build()
 
-    # Simulate the /digest command
     cards = get_daily_digest_cards(limit=10)
     if not cards:
         await bot.send_message(
             chat_id=config.TELEGRAM_CHAT_ID,
-            text="*🧠 Silicon Radar Daily*\n\nNo high-signal items in the last 24 hours. The industry slept.",
-            parse_mode=ParseMode.MARKDOWN,
+            text="<b>🧠 Silicon Radar Daily</b>\n\nNo high-signal items in the last 24 hours. The industry slept.",
+            parse_mode=ParseMode.HTML,
         )
         return
 
-    lines = ["*🧠 Silicon Radar Daily Digest*\n", f"_{datetime.now().strftime('%B %d, %Y')}_\n"]
+    date_str = escape_html(datetime.now().strftime('%B %d, %Y'))
+    lines = [f"<b>🧠 Silicon Radar Daily Digest</b>\n", f"<i>{date_str}</i>\n"]
     for i, card in enumerate(cards, 1):
         layers = card.get("tech_layer") or []
         emoji = LAYER_EMOJI.get(layers[0], "•") if layers else "•"
         score = card.get("importance_score", 0)
+        summary = escape_html(card.get('one_line_summary', card.get('title', ''))[:80])
+        strategic = escape_html(card.get('why_strategic', '')[:120])
+        url = escape_html(card.get('url', ''))
         lines.append(
-            f"{i}. {emoji} *{card.get('one_line_summary', card.get('title', ''))[:80]}*\n"
-            f"   _{card.get('why_strategic', '')[:120]}..._\n"
-            f"   [Source]({card.get('url', '')}) | {score:.0%} signal\n"
+            f"{i}. {emoji} <b>{summary}</b>\n"
+            f"   <i>{strategic}...</i>\n"
+            f"   <a href='{url}'>Source</a> | {score:.0%} signal\n"
         )
 
     await bot.send_message(
         chat_id=config.TELEGRAM_CHAT_ID,
         text="\n".join(lines),
-        parse_mode=ParseMode.MARKDOWN,
+        parse_mode=ParseMode.HTML,
         disable_web_page_preview=True,
     )
     log.info("Daily digest sent.")
