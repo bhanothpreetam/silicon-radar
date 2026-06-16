@@ -125,51 +125,85 @@ def collect_hn(source_id: int, max_items: int = 30) -> int:
 # Reddit Collector (JSON API — no auth needed for public subreddits)
 # ---------------------------------------------------------------------------
 
+_REDDIT_UA = "SiliconRadar/0.1 personal research bot"
+
+
+def _reddit_fetch_rss(subreddit: str, sort: str, max_items: int) -> list:
+    """
+    Fetch posts via Reddit RSS (Atom feed) — avoids the 403-blocked JSON API.
+    sort: 'hot' or 'new'
+    Returns list of feedparser entry dicts, or empty list on failure.
+    """
+    url = f"https://www.reddit.com/r/{subreddit}/{sort}.rss?limit={max_items}"
+    for attempt in range(2):
+        try:
+            resp = httpx.get(
+                url,
+                headers={"User-Agent": _REDDIT_UA, "Accept": "application/atom+xml"},
+                timeout=15,
+                follow_redirects=True,
+            )
+            if resp.status_code == 429:
+                if attempt == 0:
+                    log.warning(f"  [Reddit] 429 on r/{subreddit}/{sort} — sleeping 10s, retrying")
+                    time.sleep(10)
+                    continue
+                else:
+                    log.warning(f"  [Reddit] 429 persists on r/{subreddit}/{sort} — skipping")
+                    return []
+            if resp.status_code != 200:
+                log.warning(f"  [Reddit] HTTP {resp.status_code} on r/{subreddit}/{sort}")
+                return []
+            feed = feedparser.parse(resp.text)
+            return feed.entries
+        except Exception as e:
+            log.error(f"  [Reddit] Fetch error r/{subreddit}/{sort}: {e}")
+            return []
+    return []
+
+
 def collect_reddit(source_id: int, subreddit: str, max_items: int = 25) -> int:
     """
-    Pull top posts from a subreddit using Reddit's public JSON API.
-    No auth needed — just adds .json to any Reddit URL.
+    Pull posts from a subreddit via RSS (JSON API is blocked on most IPs).
+    Tries /hot first; falls back to /new on 429 or 0 results.
+    Score filter lowered to 3; RSS doesn't expose score so we take top posts by rank.
     """
     new_count = 0
-    url = f"https://www.reddit.com/r/{subreddit}/hot.json?limit={max_items}"
 
-    try:
-        # Reddit requires a User-Agent, otherwise blocks with 429
-        resp = httpx.get(
-            url,
-            headers={"User-Agent": "SiliconRadar/0.1 (personal research tool)"},
-            timeout=15,
+    entries = _reddit_fetch_rss(subreddit, "hot", max_items)
+    sort_used = "hot"
+    if not entries:
+        log.info(f"  [Reddit] r/{subreddit}/hot returned 0 — trying /new")
+        entries = _reddit_fetch_rss(subreddit, "new", max_items)
+        sort_used = "new"
+
+    log.info(f"  [Reddit] r/{subreddit}/{sort_used}: {len(entries)} entries fetched")
+
+    for entry in entries[:max_items]:
+        title = entry.get("title", "").strip()
+        link = entry.get("link", "")
+        if not title or not link:
+            continue
+
+        # RSS summary is HTML; strip tags for raw_text
+        summary_html = entry.get("summary", "")
+        # Simple tag strip — good enough for storage
+        import re as _re
+        summary_text = _re.sub(r"<[^>]+>", " ", summary_html).strip()
+
+        published = None
+        if entry.get("published_parsed"):
+            published = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
+
+        raw_text = _truncate(
+            f"{title}\n\n{summary_text}\n\n"
+            f"Reddit r/{subreddit} | via {sort_used}"
         )
-        data = resp.json()
-        posts = data.get("data", {}).get("children", [])
 
-        for post in posts:
-            d = post.get("data", {})
-            title = d.get("title", "")
-            post_url = d.get("url", "")
-            selftext = d.get("selftext", "")
-            score = d.get("score", 0)
-
-            if not title or score < 10:  # filter low-signal posts
-                continue
-
-            # Use permalink as canonical URL if it's a discussion post
-            permalink = f"https://reddit.com{d.get('permalink', '')}"
-            canonical_url = post_url if post_url and not post_url.startswith("https://www.reddit.com") else permalink
-
-            raw_text = _truncate(
-                f"{title}\n\n{selftext}\n\n"
-                f"Reddit r/{subreddit} | Score: {score} | Comments: {d.get('num_comments', 0)}"
-            )
-
-            published = datetime.fromtimestamp(d.get("created_utc", 0), tz=timezone.utc)
-            item_id = insert_raw_item(source_id, title, canonical_url, raw_text, published)
-            if item_id:
-                new_count += 1
-                log.info(f"  [Reddit] New: {title[:60]}")
-
-    except Exception as e:
-        log.error(f"Reddit collect error for r/{subreddit}: {e}")
+        item_id = insert_raw_item(source_id, title, link, raw_text, published)
+        if item_id:
+            new_count += 1
+            log.info(f"  [Reddit] New: {title[:60]}")
 
     return new_count
 

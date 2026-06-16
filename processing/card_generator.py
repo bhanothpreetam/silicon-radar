@@ -7,16 +7,19 @@ Free tier limits: 1,500 req/day, 15 RPM, 1M token context
 We stay well within this with careful rate limiting.
 """
 
+import difflib
 import json
 import time
 import logging
+import urllib.parse
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 from google import genai
 from google.genai import types
 
 from app.config import config
-from db.models import get_unprocessed_items, insert_intelligence_card
+from db.models import get_unprocessed_items, insert_intelligence_card, get_client
 
 log = logging.getLogger(__name__)
 
@@ -71,6 +74,69 @@ def _is_relevant(title: str) -> bool:
     """Return True if the title contains at least one domain keyword."""
     t = title.lower()
     return any(kw in t for kw in _KEYWORDS_LOWER)
+
+
+def log_api_usage(key_index: int, model: str) -> None:
+    try:
+        client = get_client()
+        client.table('api_usage').insert({
+            'key_index': key_index,
+            'model': model,
+        }).execute()
+    except Exception as e:
+        log.warning(f"Failed to log API usage: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Deduplication helpers
+# ---------------------------------------------------------------------------
+
+def get_recent_titles() -> list:
+    """Fetch one_line_summary of all cards generated in the last 48 hours."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=48)).isoformat()
+    client = get_client()
+    resp = (
+        client.table('intelligence_cards')
+        .select('id,one_line_summary')
+        .gte('generated_at', cutoff)
+        .execute()
+    )
+    return [r['one_line_summary'] for r in resp.data if r.get('one_line_summary')]
+
+
+def _get_recent_domains() -> set:
+    """Fetch URL domains of cards generated in the last 24 hours (mirror-site dedup)."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+    client = get_client()
+    cards_resp = (
+        client.table('intelligence_cards')
+        .select('raw_item_id')
+        .gte('generated_at', cutoff)
+        .execute()
+    )
+    item_ids = [r['raw_item_id'] for r in cards_resp.data]
+    if not item_ids:
+        return set()
+    items_resp = client.table('raw_items').select('url').in_('id', item_ids).execute()
+    domains = set()
+    for item in items_resp.data:
+        try:
+            netloc = urllib.parse.urlparse(item['url']).netloc.removeprefix('www.')
+            if netloc:
+                domains.add(netloc)
+        except Exception:
+            pass
+    return domains
+
+
+def is_duplicate(new_title: str, recent_titles: list, threshold: float = 0.75) -> bool:
+    """Return True if new_title is too similar to any recent card title (ratio > threshold)."""
+    new_lower = new_title.lower()
+    for recent in recent_titles:
+        ratio = difflib.SequenceMatcher(None, new_lower, recent.lower()).ratio()
+        if ratio > threshold:
+            return True
+    return False
 
 
 # Key rotator — instantiated once at module load with all configured keys
@@ -210,6 +276,7 @@ def generate_intelligence_card(
 
             if is_daily_exhausted:
                 log.warning(f"  [key {key_idx}] Daily quota exhausted — rotating to next key")
+                log_api_usage(_rotator.current_index, config.GEMINI_MODEL + ":exhausted")
                 _rotator.mark_exhausted(current_key)
                 # Immediately retry with next key (no sleep needed)
                 continue
@@ -230,26 +297,55 @@ def generate_intelligence_card(
 def process_unprocessed_items(max_items: int = 50) -> int:
     """
     Main loop: pull unprocessed items, generate cards, store them.
-    Keyword pre-filter runs before any Gemini call.
+    Runs keyword pre-filter and deduplication before any Gemini call.
     Returns count of cards generated.
     """
     items = get_unprocessed_items(limit=max_items)
     log.info(f"Processing {len(items)} unprocessed items...")
 
+    # Load dedup state once — avoids per-item DB round trips
+    recent_titles = get_recent_titles()
+    recent_domains = _get_recent_domains()
+    log.info(f"Dedup loaded: {len(recent_titles)} recent titles, {len(recent_domains)} recent domains")
+
     generated = 0
     filtered = 0
+    duped = 0
+
     for item in items:
-        if not _is_relevant(item["title"]):
-            log.info(f"  filtered: off-topic | {item['title'][:70]}")
+        title = item["title"]
+        url = item["url"]
+
+        # 1. Keyword relevance pre-filter
+        if not _is_relevant(title):
+            log.info(f"  filtered: off-topic | {title[:70]}")
             filtered += 1
             continue
 
-        log.info(f"Generating card for: {item['title'][:60]}")
+        # 2. Domain dedup: skip if same source domain already processed today
+        try:
+            domain = urllib.parse.urlparse(url).netloc.removeprefix('www.')
+        except Exception:
+            domain = ""
+        # Only apply domain dedup to non-primary sources (x.com, reddit.com etc. are fine to repeat)
+        _DOMAIN_DEDUP_EXEMPT = {'x.com', 'twitter.com', 'reddit.com', 'news.ycombinator.com', 'arxiv.org'}
+        if domain and domain not in _DOMAIN_DEDUP_EXEMPT and domain in recent_domains:
+            log.info(f"  dedup: domain '{domain}' already seen today | {title[:60]}")
+            duped += 1
+            continue
+
+        # 3. Title similarity dedup
+        if is_duplicate(title, recent_titles):
+            log.info(f"  dedup: similar story exists | {title[:60]}")
+            duped += 1
+            continue
+
+        log.info(f"Generating card for: {title[:60]}")
 
         card = generate_intelligence_card(
             raw_item_id=item["id"],
-            title=item["title"],
-            url=item["url"],
+            title=title,
+            url=url,
             raw_text=item["raw_text"] or "",
             source_type=item["source_type"],
             credibility=item["credibility"],
@@ -257,16 +353,25 @@ def process_unprocessed_items(max_items: int = 50) -> int:
 
         if card:
             insert_intelligence_card(item["id"], card)
+            log_api_usage(_rotator.current_index, config.GEMINI_MODEL)
             generated += 1
+            # Update in-run dedup state so subsequent items in same batch are checked
+            if card.get('one_line_summary'):
+                recent_titles.append(card['one_line_summary'])
+            if domain:
+                recent_domains.add(domain)
             print(f"\n{'='*60}")
-            print(f"CARD {generated}: {item['title'][:70]}")
+            print(f"CARD {generated}: {title[:70]}")
             print('='*60)
             print(json.dumps(card, indent=2, ensure_ascii=False))
         else:
             if _rotator.all_exhausted:
                 log.error("All API keys exhausted — stopping processing early.")
                 break
-            log.warning(f"  Skipped (no card): {item['title'][:60]}")
+            log.warning(f"  Skipped (no card): {title[:60]}")
 
-    log.info(f"=== Filtered {filtered} off-topic, generated {generated} intelligence cards ===")
+    log.info(
+        f"=== Filtered {filtered} off-topic, {duped} duplicates, "
+        f"generated {generated} intelligence cards ==="
+    )
     return generated

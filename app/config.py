@@ -46,7 +46,8 @@ class Config:
     # --- Reddit subreddits to watch ---
     REDDIT_SUBREDDITS: list = (
         "hardware", "chipdesign", "ECE", "MachineLearning",
-        "singularity", "Futurology"
+        "singularity", "FPGA", "PrintedCircuitBoard",
+        "embedded", "electronics", "LocalLLaMA",
     )
 
     # --- ArXiv categories to watch ---
@@ -120,6 +121,16 @@ def _parse_gemini_keys() -> list:
     return [config.GEMINI_API_KEY] if config.GEMINI_API_KEY else []
 
 config.GEMINI_API_KEYS = _parse_gemini_keys()
+
+# Curated Tier1 list for quick/frequent runs (~18 accounts)
+TWITTER_TIER1 = [
+    "dylan522p", "jimkxa", "PatrickMoorhead",
+    "IanCutress", "SemiAnalysis_", "semivision_tw",
+    "mooreslawisdead", "Asianometry", "IEEESpectrum",
+    "always_ff_rohan", "GPUsAreMagic", "Vikramskr",
+    "AMD", "intel", "Qualcomm", "tenstorrent",
+    "ChipsandCheese9",
+]
 
 # Flat list of all Twitter accounts
 TWITTER_ACCOUNTS = (

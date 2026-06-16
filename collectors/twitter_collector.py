@@ -8,6 +8,7 @@ import asyncio
 import base64
 import logging
 import os
+import re
 import random
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -112,6 +113,38 @@ async def _get_api() -> twscrape.API:
     return api
 
 
+def _parse_iso(s: str) -> datetime:
+    """Parse ISO datetime strings from Supabase, which sometimes return
+    5-digit fractional seconds that Python <3.11 fromisoformat rejects."""
+    s = s.replace('Z', '+00:00')
+    # Pad fractional seconds to 6 digits (e.g. .96655 → .966550)
+    s = re.sub(r'(\.\d+)(?=[+-])', lambda m: m.group(1).ljust(7, '0')[:7], s)
+    return datetime.fromisoformat(s)
+
+
+def get_cached_user_id(username: str) -> str | None:
+    client = get_client()
+    result = client.table('twitter_user_cache') \
+        .select('user_id,cached_at') \
+        .eq('username', username.lower()) \
+        .execute()
+    if not result.data:
+        return None
+    cached_at = _parse_iso(result.data[0]['cached_at'])
+    if (datetime.now(timezone.utc) - cached_at).days > 7:
+        return None
+    return result.data[0]['user_id']
+
+
+def cache_user_id(username: str, user_id: str) -> None:
+    client = get_client()
+    client.table('twitter_user_cache').upsert({
+        'username': username.lower(),
+        'user_id': user_id,
+        'cached_at': datetime.now(timezone.utc).isoformat(),
+    }).execute()
+
+
 def _get_twitter_source_id() -> int | None:
     """Look up the Twitter/X source row in Supabase."""
     client = get_client()
@@ -143,13 +176,33 @@ async def collect_twitter_accounts(
         min_likes = 20 if credibility == 10 else 5
 
         try:
-            user = await api.user_by_login(username)
-            if user is None:
-                log.warning(f"  [Twitter] @{username} not found, skipping")
-                continue
+            cached_id = get_cached_user_id(username)
+            if cached_id:
+                user_id = cached_id
+                log.info(f"  [Twitter] Cache hit: @{username}")
+            else:
+                user = await api.user_by_login(username)
+                if user is None:
+                    log.warning(f"  [Twitter] @{username} not found, skipping")
+                    continue
+                user_id = str(user.id)
+                cache_user_id(username, user_id)
+                log.info(f"  [Twitter] Cached new ID: @{username} → {user_id}")
 
             collected = 0
-            async for tweet in api.user_tweets(user.id, limit=tweets_per_account):
+            async def _fetch_tweets():
+                results = []
+                async for tweet in api.user_tweets(int(user_id), limit=tweets_per_account):
+                    results.append(tweet)
+                return results
+
+            try:
+                tweet_list = await asyncio.wait_for(_fetch_tweets(), timeout=45.0)
+            except asyncio.TimeoutError:
+                log.warning(f"  [Twitter] @{username} timed out after 45s — skipping")
+                tweet_list = []
+
+            for tweet in tweet_list:
                 # Skip retweets
                 if tweet.retweetedTweet is not None:
                     continue

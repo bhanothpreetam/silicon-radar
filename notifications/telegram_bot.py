@@ -255,6 +255,132 @@ async def cmd_flashcards(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
 
 
+async def cmd_stats(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    from db.models import get_client
+    from datetime import timezone, timedelta
+
+    client = get_client()
+    today_start = datetime.now(timezone.utc).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    ).isoformat()
+    week_start = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+
+    cards_today = client.table('intelligence_cards').select('id', count='exact').gte('generated_at', today_start).execute()
+    cards_total = client.table('intelligence_cards').select('id', count='exact').execute()
+    notifs_today = client.table('notifications').select('id', count='exact').gte('sent_at', today_start).execute()
+
+    usage = client.table('api_usage').select('key_index,model').gte('logged_at', today_start).execute()
+    n_keys = len(config.GEMINI_API_KEYS)
+    key_counts = {i: 0 for i in range(n_keys)}
+    key_exhausted = {i: False for i in range(n_keys)}
+    for row in (usage.data or []):
+        k = row['key_index']
+        if row['model'].endswith(':exhausted'):
+            key_exhausted[k] = True
+        else:
+            key_counts[k] = key_counts.get(k, 0) + 1
+    total_today = sum(key_counts.values())
+
+    items = client.table('raw_items').select('source_id').gte('fetched_at', week_start).execute()
+    src_counts = {}
+    for item in (items.data or []):
+        s = item['source_id']
+        src_counts[s] = src_counts.get(s, 0) + 1
+    top_src_id = max(src_counts, key=src_counts.get) if src_counts else None
+
+    top_src_name = "unknown"
+    if top_src_id:
+        src = client.table('sources').select('name').eq('id', top_src_id).execute()
+        if src.data:
+            top_src_name = src.data[0]['name']
+
+    feedback = client.table('feedback').select('reaction').gte('reacted_at', week_start).execute()
+    fb_counts = {'fire': 0, 'brain': 0, 'rabbit_hole': 0, 'trash': 0}
+    for row in (feedback.data or []):
+        r = row['reaction']
+        fb_counts[r] = fb_counts.get(r, 0) + 1
+
+    text = (
+        f"📊 Silicon Radar Stats\n\n"
+        f"Today:\n"
+        f"  Cards generated: {cards_today.count or 0}\n"
+        f"  Notifications sent: {notifs_today.count or 0}\n"
+        f"  API calls logged: {total_today}\n\n"
+        f"API keys today:\n" +
+        "".join(
+            f"  Key {i+1}: {key_counts[i]} cards {'🔴 exhausted' if key_exhausted[i] else '🟢'}\n"
+            for i in range(n_keys)
+        ) +
+        "\n"
+        f"All time:\n"
+        f"  Total cards: {cards_total.count or 0}\n\n"
+        f"This week:\n"
+        f"  Top source: {top_src_name} ({src_counts.get(top_src_id, 0)} items)\n"
+        f"  Feedback: 🔥{fb_counts['fire']} "
+        f"🧠{fb_counts['brain']} "
+        f"🕳️{fb_counts['rabbit_hole']} "
+        f"🗑️{fb_counts['trash']}"
+    )
+
+    await update.message.reply_text(text)
+
+
+async def cmd_health(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    from db.models import get_client
+    from datetime import timezone
+
+    client = get_client()
+    issues = []
+
+    try:
+        client.table('sources').select('id').limit(1).execute()
+        db_status = "✅ connected"
+    except Exception as e:
+        db_status = f"❌ error: {str(e)[:50]}"
+        issues.append("Database unreachable")
+
+    try:
+        last_item = client.table('raw_items').select('fetched_at').order('fetched_at', desc=True).limit(1).execute()
+        if last_item.data:
+            fetched = datetime.fromisoformat(last_item.data[0]['fetched_at'].replace('Z', '+00:00'))
+            mins_ago = int((datetime.now(timezone.utc) - fetched).total_seconds() / 60)
+            collect_status = f"✅ {mins_ago} min ago"
+            if mins_ago > 180:
+                issues.append(f"No collection in {mins_ago} min")
+                collect_status = f"⚠️ {mins_ago} min ago"
+        else:
+            collect_status = "❓ no data"
+    except Exception as e:
+        collect_status = "❌ error"
+        issues.append("Cannot check collection")
+
+    try:
+        last_card = client.table('intelligence_cards').select('generated_at').order('generated_at', desc=True).limit(1).execute()
+        if last_card.data:
+            generated = datetime.fromisoformat(last_card.data[0]['generated_at'].replace('Z', '+00:00'))
+            mins_ago = int((datetime.now(timezone.utc) - generated).total_seconds() / 60)
+            card_status = f"✅ {mins_ago} min ago"
+            if mins_ago > 360:
+                issues.append(f"No cards in {mins_ago} min")
+                card_status = f"⚠️ {mins_ago} min ago"
+        else:
+            card_status = "❓ no cards yet"
+    except Exception:
+        card_status = "❌ error"
+
+    overall = "✅ All systems go" if not issues else "⚠️ " + "; ".join(issues)
+
+    text = (
+        f"🏥 Silicon Radar Health\n\n"
+        f"Database: {db_status}\n"
+        f"Last collection: {collect_status}\n"
+        f"Last card: {card_status}\n\n"
+        f"Status: {overall}"
+    )
+
+    await update.message.reply_text(text)
+
+
 async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "*Silicon Radar Commands*\n\n"
@@ -263,6 +389,8 @@ async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "/answer — Reveal quiz answer\n"
         "/rabbit — Deep dive topics\n"
         "/flashcards — Spaced repetition cards\n"
+        "/stats — API usage and pipeline stats\n"
+        "/health — System health check\n"
         "/help — This message",
         parse_mode=ParseMode.MARKDOWN,
     )
@@ -362,6 +490,8 @@ def run_bot():
     app.add_handler(CommandHandler("answer", cmd_answer))
     app.add_handler(CommandHandler("rabbit", cmd_rabbit))
     app.add_handler(CommandHandler("flashcards", cmd_flashcards))
+    app.add_handler(CommandHandler("stats", cmd_stats))
+    app.add_handler(CommandHandler("health", cmd_health))
     app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(CallbackQueryHandler(handle_feedback, pattern="^fb:"))
 
