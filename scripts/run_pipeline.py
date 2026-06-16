@@ -88,8 +88,8 @@ def check_config():
     """Verify required environment variables are set."""
     from app.config import config
     missing = []
-    if not config.GEMINI_API_KEY:
-        missing.append("GEMINI_API_KEY")
+    if not config.GEMINI_API_KEYS:
+        missing.append("GEMINI_API_KEY or GEMINI_API_KEYS")
     if not config.SUPABASE_URL:
         missing.append("SUPABASE_URL")
     if not config.SUPABASE_KEY:
