@@ -61,24 +61,28 @@ def format_intelligence_card(card: dict, level: str, url: str) -> str:
     score = card.get("importance_score", 0.5)
     score_bar = "█" * int(score * 10) + "░" * (10 - int(score * 10))
 
-    def e(text, limit=None):
-        s = escape_html(str(text) if text else "")
-        if limit and len(s) > limit:
-            s = s[:limit] + "…"
-        return s
+    def e(text):
+        return escape_html(str(text) if text else "")
 
-    return (
+    msg = (
         f"{header} {layer_str}\n\n"
         f"<b>{e(card.get('one_line_summary', 'New signal'))}</b>\n\n"
-        f"<b>What happened:</b>\n{e(card.get('what_happened', ''), 350)}\n\n"
-        f"<b>Why it matters technically:</b>\n{e(card.get('why_technical', ''), 350)}\n\n"
-        f"<b>Why it matters strategically:</b>\n{e(card.get('why_strategic', ''), 350)}\n\n"
-        f"<b>ELI-New-Grad:</b>\n{e(card.get('eli5_explanation', ''), 280)}\n\n"
-        f"<b>Textbook connection:</b>\n{e(card.get('textbook_bridge', ''), 200)}\n\n"
-        f"<b>Rabbit hole →</b> {e(card.get('rabbit_hole', ''), 150)}\n\n"
+        f"<b>What happened:</b>\n{e(card.get('what_happened', ''))}\n\n"
+        f"<b>Why it matters technically:</b>\n{e(card.get('why_technical', ''))}\n\n"
+        f"<b>Why it matters strategically:</b>\n{e(card.get('why_strategic', ''))}\n\n"
+        f"<b>ELI-New-Grad:</b>\n{e(card.get('eli5_explanation', ''))}\n\n"
+        f"<b>Textbook connection:</b>\n{e(card.get('textbook_bridge', ''))}\n\n"
+        f"<b>Rabbit hole →</b> {e(card.get('rabbit_hole', ''))}\n\n"
         f"📊 [{score_bar}] {score:.0%}\n\n"
         f"<a href='{escape_html(url)}'>Read source</a>"
     )
+
+    if len(msg) <= 4096:
+        return msg
+    # Cut at the last paragraph boundary before the limit, keeping the source link
+    footer = f"\n\n<a href='{escape_html(url)}'>Read source</a>"
+    cut = msg[:4096 - len(footer) - 1].rfind('\n\n')
+    return msg[:cut] + "\n\n…" + footer
 
 
 def format_ping(card: dict, url: str) -> str:
