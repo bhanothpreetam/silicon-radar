@@ -10,6 +10,7 @@ import logging
 import os
 import re
 import random
+import urllib.parse
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
@@ -145,6 +146,82 @@ def cache_user_id(username: str, user_id: str) -> None:
     }).execute()
 
 
+# Platform domains that carry no endorsement signal when linked from a tweet
+_LINK_SKIP = {
+    "x.com", "twitter.com", "t.co", "youtube.com", "youtu.be", "reddit.com",
+    "linkedin.com", "facebook.com", "instagram.com", "github.com",
+    "wikipedia.org", "google.com", "amazon.com", "t.me",
+    "bit.ly", "tinyurl.com", "buff.ly", "ow.ly", "goo.gl",
+    "pinterest.com", "bsky.app", "flipboard.com", "whatsapp.com",
+}
+
+
+def _mine_endorsements(username: str, tweets: list) -> list[dict]:
+    """
+    Extract endorsement edges from a batch of tweets:
+    retweets/quotes of other accounts, mentions, and outbound article links.
+    This is the raw material for citation-graph source discovery.
+    """
+    me = username.lower()
+    events = []
+    for t in tweets:
+        try:
+            rt = t.retweetedTweet
+            if rt is not None and rt.user and rt.user.username.lower() != me:
+                events.append({
+                    "endorser": me, "endorser_type": "twitter",
+                    "target": rt.user.username.lower(), "target_type": "twitter",
+                    "kind": "retweet", "evidence": t.url,
+                })
+            qt = getattr(t, "quotedTweet", None)
+            if qt is not None and qt.user and qt.user.username.lower() != me:
+                events.append({
+                    "endorser": me, "endorser_type": "twitter",
+                    "target": qt.user.username.lower(), "target_type": "twitter",
+                    "kind": "quote", "evidence": t.url,
+                })
+            # Mentions only in original tweets (reply mentions are conversation noise)
+            if getattr(t, "inReplyToUser", None) is None:
+                for mu in getattr(t, "mentionedUsers", None) or []:
+                    if mu.username.lower() != me:
+                        events.append({
+                            "endorser": me, "endorser_type": "twitter",
+                            "target": mu.username.lower(), "target_type": "twitter",
+                            "kind": "mention", "evidence": t.url,
+                        })
+            for link in getattr(t, "links", None) or []:
+                url = getattr(link, "url", None)
+                if not url:
+                    continue
+                domain = urllib.parse.urlparse(url).netloc.removeprefix("www.").lower()
+                if not domain or domain in _LINK_SKIP:
+                    continue
+                if any(domain == s or domain.endswith("." + s) for s in _LINK_SKIP):
+                    continue
+                events.append({
+                    "endorser": me, "endorser_type": "twitter",
+                    "target": domain, "target_type": "domain",
+                    "kind": "link", "evidence": t.url,
+                })
+        except Exception:
+            continue
+    return events
+
+
+def _log_endorsements(events: list[dict]) -> None:
+    if not events:
+        return
+    try:
+        client = get_client()
+        client.table("endorsements").upsert(
+            events,
+            on_conflict="endorser,target,kind,evidence",
+            ignore_duplicates=True,
+        ).execute()
+    except Exception as e:
+        log.debug(f"  endorsement logging skipped: {e}")
+
+
 def _get_twitter_source_id() -> int | None:
     """Look up the Twitter/X source row in Supabase."""
     client = get_client()
@@ -201,6 +278,10 @@ async def collect_twitter_accounts(
             except asyncio.TimeoutError:
                 log.warning(f"  [Twitter] @{username} timed out after 45s — skipping")
                 tweet_list = []
+
+            # Mine endorsement edges (retweets/quotes/mentions/links) before
+            # the storage loop discards retweets — fuel for source discovery
+            _log_endorsements(_mine_endorsements(username, tweet_list))
 
             for tweet in tweet_list:
                 # Skip retweets
