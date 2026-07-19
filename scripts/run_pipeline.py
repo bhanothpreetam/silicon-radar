@@ -301,6 +301,12 @@ if __name__ == "__main__":
         run_digest()
     elif mode == "map":
         asyncio.run(send_weekly_map())
+    elif mode == "learn":
+        from intelligence.learning_track import run_learning_track
+        n = run_learning_track(max_cards=1)
+        log.info(f"Learning track: {n} concept card(s) generated")
+        if n > 0:
+            run_notify()
     elif mode == "youtube":
         from collectors.youtube_collector import collect_youtube
         from db.models import get_client
