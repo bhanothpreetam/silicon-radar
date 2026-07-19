@@ -165,6 +165,16 @@ def run_quick() -> int:
     log.info(f"Twitter Tier1: {tw_count} new items")
     total += tw_count
 
+    try:
+        from collectors.youtube_collector import collect_youtube
+        yt_src = client.table('sources').select('id').eq('type', 'youtube').execute()
+        if yt_src.data:
+            yt_count = collect_youtube(source_id=yt_src.data[0]['id'])
+            log.info(f"YouTube: {yt_count} new videos")
+            total += yt_count
+    except Exception as e:
+        log.error(f"YouTube collect failed: {e}")
+
     log.info(f"=== Quick collect done: {total} new items ===")
     return total
 
@@ -291,6 +301,15 @@ if __name__ == "__main__":
         run_digest()
     elif mode == "map":
         asyncio.run(send_weekly_map())
+    elif mode == "youtube":
+        from collectors.youtube_collector import collect_youtube
+        from db.models import get_client
+        yt_src = get_client().table('sources').select('id').eq('type', 'youtube').execute()
+        n = collect_youtube(source_id=yt_src.data[0]['id'])
+        log.info(f"YouTube: {n} new videos collected")
+        if n > 0:
+            run_process()
+            run_notify()
     elif mode == "bot":
         run_bot()
     elif mode == "all":

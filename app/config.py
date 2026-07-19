@@ -122,6 +122,16 @@ def _parse_gemini_keys() -> list:
 
 config.GEMINI_API_KEYS = _parse_gemini_keys()
 
+# YouTube channels to monitor (handle → channel_id, resolved 2026-07)
+YOUTUBE_CHANNELS = {
+    "Asianometry":     "UC1LpsuAUaKoMzzJSEt5WImw",  # semiconductor history/business deep dives
+    "TechTechPotato":  "UC1r0DG-KEPyqOeW6o79PByw",  # Ian Cutress — industry analysis
+    "HighYield":       "UCmMwHbw2j8LfvTKVh3O7Vdw",  # die shots, chip architecture analysis
+    "AnastasiInTech":  "UCORX3Cl7ByidjEgzSCgv9Yw",  # chip engineering
+    "Coreteks":        "UCX_t3BvnQtS5IHzto_y7tbw",  # hardware analysis
+    "brancheducation": "UCdp4_l1vPmpN-gDbUwhaRUQ",  # visual chip education
+}
+
 # Curated Tier1 list for quick/frequent runs (~18 accounts)
 TWITTER_TIER1 = [
     "dylan522p", "jimkxa", "PatrickMoorhead",

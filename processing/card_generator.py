@@ -65,7 +65,7 @@ KEYWORDS = [
     "EUV", "Qualcomm", "Snapdragon", "Cerebras", "Graviton",
     "3D-IC", "CoWoS", "photonics", "Tenstorrent", "Groq",
     "TPU", "MLPerf", "CXL", "Etched", "DRAM", "NAND",
-    "fab", "tape-out", "reticle",
+    "fab", "tape-out", "reticle", "transistor", "lithography",
 ]
 _KEYWORDS_LOWER = [k.lower() for k in KEYWORDS]
 
