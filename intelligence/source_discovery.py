@@ -51,27 +51,40 @@ def _parse_iso(s: str) -> datetime:
     return datetime.fromisoformat(s)
 
 
-_gemini_client: genai.Client | None = None
+_gemini_clients: dict[int, genai.Client] = {}
+_key_index = 0
+
 
 def _gemini() -> genai.Client:
-    global _gemini_client
-    if _gemini_client is None:
-        _gemini_client = genai.Client(api_key=config.GEMINI_API_KEYS[0])
-    return _gemini_client
+    if _key_index not in _gemini_clients:
+        _gemini_clients[_key_index] = genai.Client(api_key=config.GEMINI_API_KEYS[_key_index])
+    return _gemini_clients[_key_index]
 
 
 def _gemini_json(prompt: str, temperature: float = 0.4) -> dict:
-    response = _gemini().models.generate_content(
-        model=config.GEMINI_MODEL,
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            temperature=temperature,
-            max_output_tokens=4096,
-            response_mime_type="application/json",
-            thinking_config=types.ThinkingConfig(thinking_budget=0),
-        ),
-    )
-    return json.loads(response.text)
+    """Gemini JSON call with rotation to the next key on daily-quota 429s."""
+    global _key_index
+    n_keys = len(config.GEMINI_API_KEYS)
+    for attempt in range(n_keys):
+        try:
+            response = _gemini().models.generate_content(
+                model=config.GEMINI_MODEL,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    temperature=temperature,
+                    max_output_tokens=4096,
+                    response_mime_type="application/json",
+                    thinking_config=types.ThinkingConfig(thinking_budget=0),
+                ),
+            )
+            return json.loads(response.text)
+        except Exception as e:
+            if "RESOURCE_EXHAUSTED" in str(e) and attempt < n_keys - 1:
+                _key_index = (_key_index + 1) % n_keys
+                log.warning(f"  quota hit — rotating to key {_key_index + 1}/{n_keys}")
+                continue
+            raise
+    raise RuntimeError("all Gemini keys exhausted")
 
 
 # ---------------------------------------------------------------------------
@@ -348,6 +361,108 @@ def audition_sources(candidates: list[dict], taste: dict, batch_size: int = 15) 
 
     ranked = sorted(candidates, key=lambda c: -(c.get("audition_score") or 0))
     return ranked
+
+
+# ---------------------------------------------------------------------------
+# Stage 5 — Deep Audition (verify candidates by their actual feed content)
+# ---------------------------------------------------------------------------
+
+def _root_domain(domain: str) -> str:
+    """Crude registrable-domain extraction: last two labels (good enough for dedup)."""
+    parts = domain.split(".")
+    return ".".join(parts[-2:]) if len(parts) >= 2 else domain
+
+
+def _feed_headlines(feed_url: str, n: int = 5, timeout: float = 10.0) -> list[str]:
+    try:
+        headers = {"User-Agent": "Mozilla/5.0 (SiliconRadar feed check)"}
+        with httpx.Client(timeout=timeout, follow_redirects=True, headers=headers) as http:
+            r = http.get(feed_url)
+        parsed = feedparser.parse(r.text)
+        return [e.get("title", "") for e in parsed.entries[:n] if e.get("title")]
+    except Exception:
+        return []
+
+
+def deep_audition(min_score: float = 0.55) -> list[dict]:
+    """
+    Second-pass audition of stored candidates using their real feed content.
+    - Candidates whose root domain matches an existing source → status 'duplicate'
+    - Candidates with a feed: re-scored by Gemini from their latest headlines
+    - Candidates without a feed or whose feed is dead/off-topic → 'rejected'
+    Updates statuses in DB and returns the surviving ranked list.
+    """
+    client = get_client()
+    taste = build_taste_vector()
+    top_topics = list(taste["topics"].items())[:10]
+    topics_str = "\n".join(f"  {t}: {w}" for t, w in top_topics)
+
+    existing_roots = {_root_domain(d) for d in _existing_domains()}
+    rows = client.table("discovered_sources").select("*").eq("status", "candidate").execute().data or []
+    log.info(f"Deep-auditioning {len(rows)} candidates...")
+
+    survivors = []
+    for row in rows:
+        domain = row["domain"]
+
+        if _root_domain(domain) in existing_roots:
+            client.table("discovered_sources").update({"status": "duplicate"}).eq("id", row["id"]).execute()
+            log.info(f"  {domain}: duplicate of existing source")
+            continue
+
+        if not row.get("feed_url"):
+            client.table("discovered_sources").update({"status": "rejected"}).eq("id", row["id"]).execute()
+            log.info(f"  {domain}: no feed — rejected")
+            continue
+
+        headlines = _feed_headlines(row["feed_url"])
+        if not headlines:
+            client.table("discovered_sources").update({"status": "rejected"}).eq("id", row["id"]).execute()
+            log.info(f"  {domain}: feed dead/empty — rejected")
+            continue
+
+        headlines_str = "\n".join(f"  - {h[:110]}" for h in headlines)
+        prompt = f"""You are verifying a candidate source for a personalized semiconductor radar.
+
+READER'S TOP INTERESTS (weight 0-1):
+{topics_str}
+
+CANDIDATE: {domain}
+Its ACTUAL latest headlines:
+{headlines_str}
+
+Based on what this source ACTUALLY publishes, score 0.0-1.0:
+- relevance: overlap with the reader's interests
+- depth: technical depth (analyst/engineering > consumer news > marketing/PR)
+- uniqueness: coverage the mainstream outlets don't provide
+
+A company blog that mostly posts product marketing scores low on depth.
+
+Return JSON: {{"relevance": 0.0, "depth": 0.0, "uniqueness": 0.0,
+"verdict": "under 15 words: what it publishes, fit or not"}}"""
+
+        try:
+            a = _gemini_json(prompt, temperature=0.2)
+        except Exception as e:
+            log.warning(f"  {domain}: audition call failed: {e}")
+            continue
+
+        score = round(
+            0.45 * a.get("relevance", 0) + 0.35 * a.get("depth", 0) + 0.20 * a.get("uniqueness", 0), 3
+        )
+        new_status = "verified" if score >= min_score else "rejected"
+        client.table("discovered_sources").update({
+            "audition": {**a, "deep": True, "headlines_seen": headlines},
+            "audition_score": score,
+            "status": new_status,
+        }).eq("id", row["id"]).execute()
+        log.info(f"  {domain}: {score} → {new_status} — {a.get('verdict', '')[:60]}")
+        if new_status == "verified":
+            row.update({"audition_score": score, "audition": a, "status": "verified"})
+            survivors.append(row)
+
+    survivors.sort(key=lambda r: -(r.get("audition_score") or 0))
+    return survivors
 
 
 # ---------------------------------------------------------------------------
