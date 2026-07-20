@@ -357,32 +357,6 @@ function attachDelegatedEvents() {
 }
 
 // ---------------------------------------------------------------------------
-// Fit compact-card text to available space (kills the need to scroll it)
-// ---------------------------------------------------------------------------
-
-function fitCardBrief(cardEl) {
-  const face = cardEl.querySelector(".card-face");
-  const brief = cardEl.querySelector(".card-brief");
-  if (!face || !brief) return;
-
-  // Verify against REAL measured overflow (face.scrollHeight vs clientHeight)
-  // instead of estimating from line-height -- estimation broke on devices
-  // where computed line-height/font-scaling didn't match assumptions.
-  // .card-title has its own hard CSS cap (3 lines), so it can no longer be
-  // the unbounded culprit; this loop only has to handle .card-brief now.
-  for (let lines = 6; lines >= 1; lines--) {
-    brief.style.setProperty("-webkit-line-clamp", String(lines));
-    if (face.scrollHeight <= face.clientHeight + 1) return; // +1: rounding slack
-  }
-  // Even 1 line doesn't fit (extreme case: many wrapped badges + long title) --
-  // touch-action:pan-y + overflow-y:auto on .card-face remains the fallback.
-}
-
-function fitAllCards() {
-  document.querySelectorAll(".card").forEach(fitCardBrief);
-}
-
-// ---------------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------------
 
@@ -421,8 +395,6 @@ async function boot() {
 
   attachDrag();
   attachDelegatedEvents();
-  fitAllCards();
-  window.addEventListener("resize", fitAllCards);
   goTo(0);
 
   const hint = document.createElement("div");

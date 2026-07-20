@@ -122,7 +122,7 @@ html, body {
   flex-direction: column;
   padding: 18px 22px calc(22px + var(--safe-bottom));
   min-height: 0;
-  overflow-y: auto; /* fallback for short viewports where content taller than screen */
+  overflow-y: auto; /* rare outer fallback; native scroll-chaining hands off from .card-brief */
   touch-action: pan-y; /* vertical scroll native; horizontal drag free for JS */
 }
 
@@ -156,37 +156,22 @@ html, body {
   line-height: 1.18;
   letter-spacing: -0.02em;
   margin: 0 0 14px;
-  flex-shrink: 0;
-  /* Hard cap — titles occasionally run 200+ chars despite the prompt asking
-     for one crisp sentence. Full text is always available via "Read more". */
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-  overflow: hidden;
+  flex-shrink: 0; /* always shows in full, however many lines it needs */
 }
 
 .card-brief {
   font-size: 16px;
   line-height: 1.6;
   color: var(--text-2);
-  display: -webkit-box;
-  -webkit-line-clamp: 6;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  position: relative;
   flex: 1;
-  min-height: 0;
-}
-.card-brief::after {
-  content: "";
-  position: absolute;
-  bottom: 0; left: 0; right: 0;
-  height: 48px;
-  background: linear-gradient(to bottom, transparent, var(--surface));
+  min-height: 56px; /* stays usable even when the title above is long */
+  overflow-y: auto; /* its own scroll region — title and footer never move */
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 4px;
 }
 
 .card-footer {
-  flex-shrink: 0;
+  flex-shrink: 0; /* pinned at the bottom, always visible */
   padding-top: 16px;
 }
 
