@@ -6,7 +6,7 @@ const SUPABASE_URL = "https://qyfwvrdgbykzvahxoyyy.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF5Znd2cmRnYnlrenZhaHhveXl5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEzNzQxOTYsImV4cCI6MjA5Njk1MDE5Nn0.J4Tc_GANy3gjNonsHZzcNbtgvTjCJgCTASyBj5V20xo";
 
 const CARD_LIMIT = 60;
-const DEMO_MODE = new URLSearchParams(window.location.search).get("demo") === "deep";
+const DEMO_MODE = new URLSearchParams(window.location.search).get("demo");
 
 const LAYER_EMOJI = {
   process_node: "⚙️", microarchitecture: "🏗️", memory_hbm: "💾",
@@ -90,18 +90,20 @@ async function sb(path) {
 }
 
 async function loadCards() {
-  if (DEMO_MODE) {
-    const response = await fetch("demo-card.json?v=1");
+  if (DEMO_MODE === "deep" || DEMO_MODE === "actual") {
+    const fixture = DEMO_MODE === "actual" ? "actual-preview-cards.json?v=1" : "demo-card.json?v=1";
+    const response = await fetch(fixture);
     if (!response.ok) throw new Error(`Demo card -> ${response.status}`);
-    const demo = await response.json();
-    return [{
+    const payload = await response.json();
+    const demos = Array.isArray(payload) ? payload : [payload];
+    return demos.map((demo) => ({
       ...demo,
       isDemo: true,
       isLearning: false,
-      sourceName: "Bits'nBrews · demo",
-      sourceStatus: "trusted",
+      sourceName: demo.sourceName || "Bits'nBrews · demo",
+      sourceStatus: demo.sourceStatus || "trusted",
       userReaction: null,
-    }];
+    }));
   }
 
   const cards = await sb(

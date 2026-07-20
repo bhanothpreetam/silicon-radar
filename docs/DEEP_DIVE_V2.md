@@ -105,3 +105,8 @@ Branch previews can append `?demo=deep` to load the static Bits'nBrews-derived
 reference card. Demo mode makes no Supabase reads or feedback writes and exists
 only so the long-form reader can be reviewed before the migration and first v2
 generation run.
+
+Append `?demo=actual` to load the bounded real-source evaluation set created by
+`scripts/generate_v2_preview.py`. The generator reads explicitly selected
+`raw_items`, permits at most three model calls, and writes only a local static
+fixture. It never inserts cards, logs notifications, or saves feedback.

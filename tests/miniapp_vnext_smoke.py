@@ -363,6 +363,14 @@ def run():
         page.wait_for_timeout(100)
         assert demo_posts == []
 
+        page.goto(f"{base_url}/?demo=actual", wait_until="networkidle")
+        assert page.locator(".card").count() == 2
+        page.locator(".more-btn").first.click()
+        assert page.locator(".deep-dive").count() == 2
+        assert page.locator(".card.expanded .narrative-section").count() >= 4
+        if actual_screenshot_path := os.getenv("ACTUAL_PREVIEW_SCREENSHOT"):
+            page.screenshot(path=actual_screenshot_path, full_page=False)
+
         browser.close()
         print("Mini App vNext smoke test passed")
 
