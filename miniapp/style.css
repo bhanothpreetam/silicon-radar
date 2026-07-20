@@ -68,6 +68,55 @@ html, body {
   font-variant-numeric: tabular-nums;
 }
 
+.lens-bar {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  padding: 0 18px 9px;
+  flex-shrink: 0;
+}
+
+.lens {
+  min-width: 0;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.lens.active {
+  color: var(--text);
+  background: var(--surface-2);
+  border-color: rgba(255,255,255,0.13);
+}
+
+.lens-count {
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: rgba(255,255,255,0.06);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: inherit;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+
+.lens.active .lens-count {
+  background: color-mix(in srgb, var(--accent) 24%, var(--surface-2));
+}
+
 #progress-track {
   height: 2px;
   background: var(--border);
@@ -207,10 +256,29 @@ html, body {
   align-items: center;
   justify-content: space-between;
 }
+.source-meta {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding-right: 10px;
+}
 .source-name {
   font-size: 13px;
   color: var(--text-3);
   font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.source-age {
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.source-age::before {
+  content: "· ";
 }
 
 .more-btn {
@@ -363,6 +431,8 @@ html, body {
 .empty-state {
   position: absolute;
   inset: 0;
+  z-index: 5;
+  background: var(--bg);
   display: flex;
   flex-direction: column;
   align-items: center;

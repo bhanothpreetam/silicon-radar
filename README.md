@@ -1,253 +1,165 @@
-# Silicon Radar v0
+# Silicon Radar
 
-> A personal semiconductor & AI hardware intelligence radar.
-> Converts industry chaos into mental models — delivered to your phone.
+Silicon Radar is a personal intelligence and learning system for the
+semiconductor and AI-hardware industry. It collects material from trusted and
+probationary sources, turns high-signal items into analyst-grade intelligence
+cards with Gemini, and delivers them through Telegram and a swipeable Telegram
+Mini App.
 
-Every notification answers: **What happened? Why does it technically matter? Why does it strategically matter? What should a new CS/ECE grad understand from this? What textbook concept does this connect to? What's the rabbit hole?**
+The goal is not to summarize more news. It is to explain what changed, why it
+matters technically and strategically, what durable concept it connects to, and
+what deserves attention next.
 
----
+## System overview
 
-## What it does
+```text
+RSS / X / YouTube
+        │
+        ▼
+raw_items ──► Gemini card generation ──► intelligence_cards
+                                                │
+                          ┌─────────────────────┴─────────────────────┐
+                          ▼                                           ▼
+                 Telegram notifications                    Telegram Mini App
 
-- Pulls from 14 free sources: Semiconductor Engineering, Chips & Cheese, ArXiv cs.AR, HN, Reddit r/chipdesign, NVIDIA/AMD/Intel blogs, and more
-- Sends 3 levels of Telegram alerts: 🚨 Wake-up (major events), 📡 Brief (important), 💬 Ping (interesting)
-- Generates teaching cards with ELI-new-grad explanations, textbook bridges, flashcards, quiz questions
-- Morning digest at 9 AM, with `/quiz`, `/rabbit`, `/flashcards` commands
-- All **free** — uses Gemini 2.5 Flash API (1,500 req/day free tier)
+Trusted-source citations ──► discovery ──► probation ──► reactions ──► verdict
+```
 
----
+Three production layers share Supabase as their data store:
 
-## Setup (takes about 30 minutes)
+- **Pipeline:** collects, deduplicates, scores, generates, and notifies.
+- **Discovery and probation:** finds sources through search and citation edges,
+  auditions them, and uses explicit reactions to graduate, shelve, or blacklist
+  them.
+- **Mini App:** a static HTML/CSS/JavaScript reader that fetches cards directly
+  from Supabase and runs inside Telegram.
 
-### Step 1 — Get your Gemini API key (5 minutes)
+## What is live
 
-1. Go to https://aistudio.google.com/apikey
-2. Click "Create API Key"
-3. Copy the key — it looks like `AIzaSy...`
+- Two-hourly quick pipeline through GitHub Actions
+- RSS, X/Twitter, and YouTube collection
+- Gemini key rotation across a configured key list
+- Telegram push notifications with four feedback reactions
+- Daily digest and concept-learning card
+- Weekly industry map
+- Search-based and citation-graph source discovery
+- Probation promotion and evaluation
+- Swipeable, expandable Mini App
 
-> This is separate from your Google One / Gemini Pro subscription.
-> The API key accesses Gemini 2.5 Flash for free (1,500 requests/day, no credit card).
+The interactive polling bot commands exist, but they need a persistent host with
+working access to Telegram's network. One-shot production notifications run from
+GitHub Actions and are unaffected by the local ISP limitation documented in the
+project handoff.
 
-### Step 2 — Create a Supabase database (5 minutes)
+## Mini App
 
-1. Go to https://supabase.com and sign up (free)
-2. Click "New Project", give it a name like `silicon-radar`
-3. Wait for it to deploy (~2 minutes)
-4. Go to **Settings → API** and copy:
-   - Project URL (looks like `https://abc123.supabase.co`)
-   - `anon` public key
-5. Go to **Settings → Database → Connection String** and copy the URI format
+The production app on `main` is the stable single-feed reader. The
+`experiment/vnext` branch adds frontend-only feed lenses:
 
-### Step 3 — Set up the database schema (2 minutes)
+- **All** — the unchanged default feed
+- **Priority** — `wake_up` and `brief` signals
+- **Learn** — concept-learning cards
+- **Trial** — probation-source auditions
 
-1. In Supabase, go to the **SQL Editor**
-2. Paste the contents of `db/schema.sql`
-3. Click "Run"
+See [docs/VNEXT.md](docs/VNEXT.md) for the experiment guardrails and roadmap.
 
-You should see tables created: `sources`, `raw_items`, `intelligence_cards`, `topics`, etc.
+## Configuration
 
-### Step 4 — Create your Telegram bot (5 minutes)
+Python 3.11 or newer is recommended. Copy `.env.example` to `.env` and configure:
 
-1. Open Telegram and search for `@BotFather`
-2. Send `/newbot`
-3. Follow the prompts (name it "Silicon Radar" or anything you like)
-4. Copy the token it gives you (looks like `1234567890:AAF...`)
-5. To get your Chat ID:
-   - Search for `@userinfobot` on Telegram
-   - It will reply with your user ID number
+```dotenv
+GEMINI_API_KEYS=key1,key2,key3
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_KEY=your_key
+TELEGRAM_TOKEN=your_bot_token
+TELEGRAM_CHAT_ID=your_chat_id
+TWITTER_USERNAME=your_x_username
+TWITTER_COOKIES=auth_token=...; ct0=...
+```
 
-### Step 5 — Configure the project (2 minutes)
+`GEMINI_API_KEY` is supported as a single-key fallback. The observed Gemini 2.5
+Flash free-tier quota is 20 requests per day per key, which is why key rotation
+and quota-conscious source evaluation are core design constraints.
+
+Install dependencies:
 
 ```bash
-git clone <this-repo>
-cd silicon-radar
-
-# Copy the environment template
-cp .env.example .env
-
-# Edit .env and fill in your four values:
-# GEMINI_API_KEY, DATABASE_URL, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
-nano .env   # or use any text editor
+python3 -m pip install -r requirements.txt
 ```
 
-### Step 6 — Install Python dependencies (2 minutes)
+## Running the system
+
+The main entry point is `scripts/run_pipeline.py`:
 
 ```bash
-# Requires Python 3.11+
-pip install -r requirements.txt
+python3 scripts/run_pipeline.py quick      # production-style frequent run
+python3 scripts/run_pipeline.py collect    # collect all configured sources
+python3 scripts/run_pipeline.py process    # generate cards for queued items
+python3 scripts/run_pipeline.py notify     # send pending notifications
+python3 scripts/run_pipeline.py digest     # daily digest
+python3 scripts/run_pipeline.py learn      # one concept-learning card
+python3 scripts/run_pipeline.py map        # weekly industry synthesis
+python3 scripts/run_pipeline.py promote    # probation promotion/evaluation
+python3 scripts/run_pipeline.py bot        # persistent interactive bot
 ```
 
-### Step 7 — Test it works (5 minutes)
+Discovery has separate wrappers:
 
 ```bash
-# Load your .env
-export $(cat .env | xargs)
-
-# Test 1: Run the collector (should pull ~100 items first run)
-python scripts/run_pipeline.py collect
-
-# Test 2: Generate intelligence cards for 5 items (uses Gemini API)
-python scripts/run_pipeline.py process
-
-# Test 3: Push pending notifications to your Telegram
-python scripts/run_pipeline.py notify
-
-# Start the interactive bot (handles /digest, /quiz, etc.)
-python scripts/run_pipeline.py bot
+python3 scripts/run_discovery.py
+python3 scripts/run_citations.py
+python3 scripts/send_discovery_digest.py
 ```
 
-Your Telegram should receive notifications within a minute of step 3. If it's silent, check:
-- `TELEGRAM_CHAT_ID` — must be your personal ID, not the bot's ID
-- `TELEGRAM_TOKEN` — must include the number prefix like `1234567890:AAF...`
+## Testing the vNext Mini App
 
----
+The browser smoke test mocks Supabase, loads the static app at a mobile viewport,
+checks filtering and expansion, and uses Chrome DevTools Protocol touch input to
+verify horizontal swipe and native vertical scrolling:
 
-## Running on a schedule
-
-### Option A — Your laptop (simplest)
-
-Add to crontab (`crontab -e`):
-
-```
-# Run the full pipeline every 30 minutes
-*/30 * * * * cd /path/to/silicon-radar && export $(cat .env | xargs) && python scripts/run_pipeline.py all >> logs/pipeline.log 2>&1
-
-# Send morning digest at 9 AM
-0 9 * * * cd /path/to/silicon-radar && export $(cat .env | xargs) && python scripts/run_pipeline.py digest >> logs/pipeline.log 2>&1
-```
-
-Keep a terminal open with the bot running:
 ```bash
-export $(cat .env | xargs)
-python scripts/run_pipeline.py bot
+python3 tests/miniapp_vnext_smoke.py
 ```
 
-### Option B — GitHub Actions (free, runs in cloud)
+It requires Python Playwright and its Chromium browser. The production Mini App
+has no build step.
 
-Create `.github/workflows/pipeline.yml`:
+## Project map
 
-```yaml
-name: Silicon Radar Pipeline
-on:
-  schedule:
-    - cron: '*/30 * * * *'  # every 30 min
-  workflow_dispatch:          # manual trigger
-
-jobs:
-  run:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - run: pip install -r requirements.txt
-      - run: python scripts/run_pipeline.py all
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+```text
+app/             configuration
+collectors/      RSS, X/Twitter, and YouTube ingestion
+db/              Supabase REST access and bootstrap schema
+intelligence/    discovery, citation graph, learning, and probation
+miniapp/         static Telegram Mini App
+notifications/   Telegram formatting, delivery, feedback, and commands
+processing/      relevance, deduplication, Gemini generation, scoring
+prompts/         intelligence-card and concept-card prompts
+scripts/         pipeline and discovery entry points
+.github/         scheduled production workflows
 ```
 
-Add secrets in: GitHub repo → Settings → Secrets and variables → Actions
+## Important operating constraints
 
-> Note: GitHub Actions doesn't keep the bot running for /commands.
-> For interactive commands, run `python scripts/run_pipeline.py bot` locally.
+- Supabase access uses REST rather than direct Postgres connections.
+- The Mini App currently embeds the anon key and production tables currently
+  have no RLS. This is a deliberately accepted tradeoff, not an accidental
+  omission. Enabling RLS requires coordinating backend credentials and policies
+  so the pipeline is not broken.
+- Explicit feedback is sparse. Silence must not be interpreted as dislike.
+- Main Twitter source lists are currently configured in Python; probationary X
+  and YouTube sources are database-driven.
+- Database changes are applied manually through the Supabase SQL editor. There
+  is no migration framework to assume.
+- Prompt edits to `intelligence_card_v1.txt` must escape literal braces because
+  the template is rendered with Python `.format()`.
 
----
+## Scheduled workflows
 
-## Telegram commands
+- `pipeline.yml` — quick pipeline every two hours
+- `digest.yml` — daily digest and learning track
+- `weekly.yml` — weekly industry map
+- `discovery.yml` — weekly discovery, citation mining, digest, and promotion
 
-| Command | What it does |
-|---|---|
-| `/digest` | Today's top 10 signals with importance scores |
-| `/quiz` | Random quiz question from today's news |
-| `/answer` | Reveal the quiz answer |
-| `/rabbit` | Today's rabbit holes — topics to explore |
-| `/flashcards` | 3 spaced repetition cards from today |
-| `/help` | Show all commands |
-
-## Feedback buttons
-
-Every notification has four buttons:
-
-| Button | Meaning |
-|---|---|
-| 🔥 Important | High signal, remember this |
-| 🧠 Learned something | Educational value |
-| 🕳️ Rabbit hole | Want to go deep on this |
-| 🗑️ Noise | Low signal, filter similar items |
-
-Your feedback trains the system to know what *you* find valuable.
-
----
-
-## Adding more sources
-
-Edit `db/schema.sql` → `INSERT INTO sources` section, or run SQL directly in Supabase:
-
-```sql
-INSERT INTO sources (name, url, type, credibility) VALUES
-    ('SemiAnalysis', 'https://semianalysis.com/feed/', 'rss', 9),
-    ('The Chip Letter', 'https://thechipletter.substack.com/feed', 'rss', 8);
-```
-
-Source types: `rss`, `arxiv`, `hn`, `reddit`
-
----
-
-## Free tier usage math
-
-Gemini 2.5 Flash: **1,500 requests/day**
-
-A typical day:
-- ~150 new items across all sources
-- Each item = 1 Gemini call
-- Daily digest synthesis = 1 Gemini call
-- Total: ~151 calls/day
-
-That's **10% of your daily quota**. You have headroom for 10x growth before hitting limits.
-
----
-
-## Project structure
-
-```
-silicon-radar/
-  app/
-    config.py              ← all settings, loaded from .env
-  collectors/
-    collector.py           ← RSS, HN, Reddit, ArXiv collectors
-  processing/
-    card_generator.py      ← Gemini intelligence card generation
-  notifications/
-    telegram_bot.py        ← Telegram bot, commands, feedback
-  db/
-    schema.sql             ← Supabase schema (run once)
-    models.py              ← database read/write functions
-  prompts/
-    intelligence_card_v1.txt  ← THE PROMPT (most important file)
-  scripts/
-    run_pipeline.py        ← main entry point
-  requirements.txt
-  .env.example
-```
-
----
-
-## The most important file
-
-`prompts/intelligence_card_v1.txt` — this is the soul of the system. It instructs Gemini to behave like a "senior semiconductor analyst and computer architecture mentor" and generate structured teaching cards.
-
-Edit this prompt as you learn more. As you get better at the domain, you'll want harder questions, more technical depth, different analogies. Version your prompts by duplicating the file (`intelligence_card_v2.txt`) and updating the `PROMPT_VERSION` in `config.py`.
-
----
-
-## What to do when Gemini quota runs out
-
-Shouldn't happen with normal usage, but if it does:
-
-1. **Wait until midnight PT** — quota resets daily
-2. **Reduce `MAX_ITEMS_PER_SOURCE_PER_RUN`** in config to 10 instead of 20
-3. **Only process high-credibility sources** (credibility >= 8) until quota recovers
+The production Vercel project deploys from `main`. Experimental branches do not
+change the live Mini App unless they are explicitly promoted.

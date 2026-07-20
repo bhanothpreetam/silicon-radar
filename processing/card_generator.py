@@ -1,10 +1,11 @@
 """
 Silicon Radar — Intelligence Card Generator
-Uses Gemini 2.0 Flash (free tier) to convert raw articles
+Uses Gemini 2.5 Flash to convert raw articles
 into structured "why it matters" intelligence cards.
 
-Free tier limits: 1,500 req/day, 15 RPM, 1M token context
-We stay well within this with careful rate limiting.
+The observed free-tier daily quota is 20 requests per API key. Multiple keys
+rotate on server-reported daily exhaustion; local counters provide a coarse
+per-process safety ceiling and minute-level pacing.
 """
 
 import difflib
@@ -154,7 +155,7 @@ def _get_client(api_key: str) -> genai.Client:
 
 
 def _rate_limit() -> bool:
-    """Enforce Gemini free tier rate limits: 15 RPM, 1500 RPD."""
+    """Apply minute-level pacing and the configured process safety ceiling."""
     global _requests_this_minute, _minute_start, _requests_today, _day_start
 
     now = time.time()

@@ -23,10 +23,12 @@ class Config:
     TELEGRAM_TOKEN: str = os.getenv("TELEGRAM_TOKEN", "")
     TELEGRAM_CHAT_ID: str = os.getenv("TELEGRAM_CHAT_ID", "")  # your personal chat ID
 
-    # --- Rate limiting (stay within free tier) ---
-    # Gemini 2.0 Flash: 15 RPM, 1500 RPD
+    # --- Rate limiting ---
+    # The observed Gemini 2.5 Flash free-tier quota is 20 requests/day/key.
+    # Daily per-key exhaustion is server-enforced and handled by key rotation;
+    # this counter remains a coarse per-process safety ceiling.
     GEMINI_REQUESTS_PER_MINUTE: int = 12       # stay under 15 RPM limit
-    GEMINI_REQUESTS_PER_DAY: int = 1400        # stay under 1500 RPD limit
+    GEMINI_REQUESTS_PER_DAY: int = 1400
     DELAY_BETWEEN_REQUESTS: float = 5.0        # seconds between Gemini calls
 
     # --- Collection settings ---

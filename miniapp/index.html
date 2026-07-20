@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 <title>Silicon Radar</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
-<link rel="stylesheet" href="style.css?v=3" />
+<link rel="stylesheet" href="style.css?v=next-1" />
 </head>
 <body>
 
@@ -16,15 +16,30 @@
     <div id="counter" class="counter">–</div>
   </header>
 
+  <nav id="lens-bar" class="lens-bar" aria-label="Feed lenses">
+    <button class="lens active" type="button" data-lens="all" aria-pressed="true">
+      <span>All</span><span class="lens-count" data-lens-count="all">–</span>
+    </button>
+    <button class="lens" type="button" data-lens="priority" aria-pressed="false">
+      <span>Priority</span><span class="lens-count" data-lens-count="priority">–</span>
+    </button>
+    <button class="lens" type="button" data-lens="learning" aria-pressed="false">
+      <span>Learn</span><span class="lens-count" data-lens-count="learning">–</span>
+    </button>
+    <button class="lens" type="button" data-lens="probation" aria-pressed="false">
+      <span>Trial</span><span class="lens-count" data-lens-count="probation">–</span>
+    </button>
+  </nav>
+
   <div id="progress-track"><div id="progress-fill"></div></div>
 
-  <main id="stack" role="region" aria-label="Card feed"></main>
-
-  <div id="empty-state" class="empty-state hidden">
-    <div class="empty-icon">📭</div>
-    <div class="empty-title">No signals yet</div>
-    <div class="empty-sub">Check back after the next pipeline run.</div>
-  </div>
+  <main id="stack" role="region" aria-label="Card feed">
+    <div id="empty-state" class="empty-state hidden">
+      <div class="empty-icon">📭</div>
+      <div class="empty-title">No signals yet</div>
+      <div class="empty-sub">Check back after the next pipeline run.</div>
+    </div>
+  </main>
 
   <div id="loading" class="loading">
     <div class="spinner"></div>
@@ -32,6 +47,6 @@
 
 </div>
 
-<script src="app.js?v=3"></script>
+<script src="app.js?v=next-1"></script>
 </body>
 </html>

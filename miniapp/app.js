@@ -32,6 +32,29 @@ const REACTIONS = [
   { key: "trash", emoji: "🗑️" },
 ];
 
+const LENSES = {
+  all: {
+    emptyTitle: "No signals yet",
+    emptySub: "Check back after the next pipeline run.",
+    matches: () => true,
+  },
+  priority: {
+    emptyTitle: "Radar is quiet",
+    emptySub: "No priority signals in the latest batch.",
+    matches: (card) => card.notification_level === "wake_up" || card.notification_level === "brief",
+  },
+  learning: {
+    emptyTitle: "No learning cards yet",
+    emptySub: "The daily learning track will add the next one.",
+    matches: (card) => card.isLearning,
+  },
+  probation: {
+    emptyTitle: "No sources on trial",
+    emptySub: "Newly discovered sources will appear here during probation.",
+    matches: (card) => card.sourceStatus === "probation",
+  },
+};
+
 // ---------------------------------------------------------------------------
 // Telegram WebApp integration
 // ---------------------------------------------------------------------------
@@ -131,6 +154,18 @@ function primaryColor(card) {
   return LAYER_COLOR[layers[0]] || "#8b5cf6";
 }
 
+function relativeAge(isoDate) {
+  const timestamp = new Date(isoDate).getTime();
+  if (!Number.isFinite(timestamp)) return "";
+  const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+  if (seconds < 60) return "now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  return `${Math.floor(hours / 24)}d`;
+}
+
 function feedbackBar(card, compact) {
   const btns = REACTIONS.map(
     (r) => `<button class="fb-btn ${card.userReaction === r.key ? "active" : ""} ${
@@ -149,6 +184,7 @@ function renderCard(card, index) {
     .join("");
   const levelIcon = LEVEL_ICON[card.notification_level] || "📡";
   const pct = Math.round((card.importance_score || 0) * 100);
+  const age = relativeAge(card.generated_at);
 
   const specialBadge = card.sourceStatus === "probation"
     ? `<span class="badge probation">🧪 probation</span>`
@@ -194,7 +230,10 @@ function renderCard(card, index) {
           <div class="score-pct">${pct}%</div>
         </div>
         <div class="source-row">
-          <span class="source-name">${esc(card.sourceName)}</span>
+          <span class="source-meta">
+            <span class="source-name">${esc(card.sourceName)}</span>
+            ${age ? `<span class="source-age">${age}</span>` : ""}
+          </span>
           <button class="more-btn" data-expand="${card.id}">Read more ↓</button>
         </div>
         ${feedbackBar(card)}
@@ -220,20 +259,23 @@ function renderCard(card, index) {
 // App state + swipe/drag
 // ---------------------------------------------------------------------------
 
+let allCards = [];
 let cards = [];
 let index = 0;
 let expandedId = null;
 let dragStartX = 0;
 let dragging = false;
-let trackEl, counterEl, progressEl, stackEl;
+let activeLens = "all";
+let trackEl, counterEl, progressEl, stackEl, emptyEl, lensBarEl;
 
-function goTo(newIndex) {
+function goTo(newIndex, withHaptic = true) {
+  if (!cards.length) return;
   index = Math.max(0, Math.min(cards.length - 1, newIndex));
   trackEl.style.transform = `translateX(-${index * 100}vw)`;
   counterEl.textContent = `${index + 1} / ${cards.length}`;
   progressEl.style.width = `${((index + 1) / cards.length) * 100}%`;
   progressEl.style.background = primaryColor(cards[index]);
-  haptic("select");
+  if (withHaptic) haptic("select");
 }
 
 function expandCard(cardId) {
@@ -248,6 +290,61 @@ function collapseCard() {
   expandedId = null;
   document.querySelectorAll(".card").forEach((c) => c.classList.remove("expanded"));
   haptic("light");
+}
+
+function updateLensCounts() {
+  Object.entries(LENSES).forEach(([name, lens]) => {
+    const count = allCards.filter(lens.matches).length;
+    const el = lensBarEl.querySelector(`[data-lens-count="${name}"]`);
+    if (el) el.textContent = count;
+  });
+}
+
+function showEmptyState(lensName) {
+  const lens = LENSES[lensName];
+  emptyEl.querySelector(".empty-title").textContent = lens.emptyTitle;
+  emptyEl.querySelector(".empty-sub").textContent = lens.emptySub;
+  emptyEl.classList.remove("hidden");
+  counterEl.textContent = "0 / 0";
+  progressEl.style.width = "0%";
+}
+
+function renderFeed(preferredCardId = null) {
+  const lens = LENSES[activeLens];
+  cards = allCards.filter(lens.matches);
+  expandedId = null;
+  trackEl.replaceChildren();
+
+  lensBarEl.querySelectorAll("[data-lens]").forEach((button) => {
+    const selected = button.dataset.lens === activeLens;
+    button.classList.toggle("active", selected);
+    button.setAttribute("aria-pressed", String(selected));
+  });
+
+  if (!cards.length) {
+    showEmptyState(activeLens);
+    return;
+  }
+
+  emptyEl.classList.add("hidden");
+  cards.forEach((card, cardIndex) => {
+    const el = renderCard(card, cardIndex);
+    el.dataset.cardId = card.id;
+    trackEl.appendChild(el);
+  });
+
+  const preferredIndex = preferredCardId
+    ? cards.findIndex((card) => card.id === preferredCardId)
+    : -1;
+  goTo(preferredIndex >= 0 ? preferredIndex : 0, false);
+}
+
+function applyLens(lensName) {
+  if (!LENSES[lensName] || lensName === activeLens) return;
+  const currentCardId = cards[index] ? cards[index].id : null;
+  activeLens = lensName;
+  renderFeed(currentCardId);
+  haptic("select");
 }
 
 async function handleReaction(cardId, reaction) {
@@ -278,7 +375,7 @@ function attachDrag() {
   let activePointerId = null;
 
   stackEl.addEventListener("pointerdown", (e) => {
-    if (expandedId !== null) return; // detail view scrolls vertically instead
+    if (!cards.length || expandedId !== null) return; // detail view scrolls vertically instead
     if (e.target.closest("button, a")) return;
     startX = e.clientX;
     startY = e.clientY;
@@ -356,6 +453,13 @@ function attachDelegatedEvents() {
   });
 }
 
+function attachLensEvents() {
+  lensBarEl.addEventListener("click", (e) => {
+    const button = e.target.closest("[data-lens]");
+    if (button) applyLens(button.dataset.lens);
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------------
@@ -364,44 +468,39 @@ async function boot() {
   stackEl = document.getElementById("stack");
   counterEl = document.getElementById("counter");
   progressEl = document.getElementById("progress-fill");
+  emptyEl = document.getElementById("empty-state");
+  lensBarEl = document.getElementById("lens-bar");
 
   trackEl = document.createElement("div");
   trackEl.className = "track";
   stackEl.appendChild(trackEl);
 
   try {
-    cards = await loadCards();
+    allCards = await loadCards();
   } catch (e) {
     console.error(e);
     document.getElementById("loading").classList.add("hidden");
-    document.getElementById("empty-state").classList.remove("hidden");
-    document.querySelector(".empty-title").textContent = "Couldn't load the feed";
-    document.querySelector(".empty-sub").textContent = "Check your connection and reopen.";
+    emptyEl.classList.remove("hidden");
+    emptyEl.querySelector(".empty-title").textContent = "Couldn't load the feed";
+    emptyEl.querySelector(".empty-sub").textContent = "Check your connection and reopen.";
     return;
   }
 
   document.getElementById("loading").classList.add("hidden");
 
-  if (!cards.length) {
-    document.getElementById("empty-state").classList.remove("hidden");
-    return;
-  }
-
-  cards.forEach((card, i) => {
-    const el = renderCard(card, i);
-    el.dataset.cardId = card.id;
-    trackEl.appendChild(el);
-  });
-
   attachDrag();
   attachDelegatedEvents();
-  goTo(0);
+  attachLensEvents();
+  updateLensCounts();
+  renderFeed();
 
-  const hint = document.createElement("div");
-  hint.className = "swipe-hint";
-  hint.textContent = "← swipe →";
-  document.getElementById("app").appendChild(hint);
-  setTimeout(() => hint.remove(), 5000);
+  if (allCards.length) {
+    const hint = document.createElement("div");
+    hint.className = "swipe-hint";
+    hint.textContent = "← swipe →";
+    document.getElementById("app").appendChild(hint);
+    setTimeout(() => hint.remove(), 5000);
+  }
 }
 
 boot();
