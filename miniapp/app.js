@@ -271,7 +271,8 @@ function attachDrag() {
   // Axis is undecided until the finger has moved a few px — only then do we
   // commit to horizontal (capture the pointer, drive the swipe) or bail and
   // let the browser's native vertical scroll take over untouched.
-  const AXIS_LOCK_PX = 6;
+  const AXIS_LOCK_PX = 10;
+  const HORIZONTAL_BIAS = 1.4; // dx must clearly dominate dy -- real fingers wobble
   let startX = 0, startY = 0, currentDX = 0;
   let axis = null; // null | "x" | "y"
   let activePointerId = null;
@@ -293,7 +294,10 @@ function attachDrag() {
 
     if (axis === null) {
       if (Math.abs(dx) < AXIS_LOCK_PX && Math.abs(dy) < AXIS_LOCK_PX) return;
-      axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+      // Vertical is the safe default -- a real finger's first few px often
+      // wobble diagonally, so only commit to horizontal swipe when dx clearly
+      // dominates dy, not just barely edges it out.
+      axis = Math.abs(dx) > Math.abs(dy) * HORIZONTAL_BIAS ? "x" : "y";
       if (axis === "x") {
         dragging = true;
         trackEl.classList.add("dragging");
