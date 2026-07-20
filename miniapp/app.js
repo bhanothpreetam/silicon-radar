@@ -353,6 +353,33 @@ function attachDelegatedEvents() {
 }
 
 // ---------------------------------------------------------------------------
+// Fit compact-card text to available space (kills the need to scroll it)
+// ---------------------------------------------------------------------------
+
+function fitCardBrief(cardEl) {
+  const brief = cardEl.querySelector(".card-brief");
+  const title = cardEl.querySelector(".card-title");
+  const footer = cardEl.querySelector(".card-footer");
+  if (!brief || !footer) return;
+
+  // Reset to the max so we measure against brief's natural (unclamped-by-us) box
+  brief.style.setProperty("-webkit-line-clamp", "6");
+
+  const titleBottom = (title || brief).getBoundingClientRect().bottom;
+  const footerTop = footer.getBoundingClientRect().top;
+  const available = footerTop - titleBottom;
+
+  const lineHeight = parseFloat(getComputedStyle(brief).lineHeight) || 26;
+  let maxLines = Math.floor(available / lineHeight);
+  maxLines = Math.max(2, Math.min(6, maxLines));
+  brief.style.setProperty("-webkit-line-clamp", String(maxLines));
+}
+
+function fitAllCards() {
+  document.querySelectorAll(".card").forEach(fitCardBrief);
+}
+
+// ---------------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------------
 
@@ -391,6 +418,8 @@ async function boot() {
 
   attachDrag();
   attachDelegatedEvents();
+  fitAllCards();
+  window.addEventListener("resize", fitAllCards);
   goTo(0);
 
   const hint = document.createElement("div");
