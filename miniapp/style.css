@@ -122,6 +122,7 @@ html, body {
   flex-direction: column;
   padding: 18px 22px calc(22px + var(--safe-bottom));
   min-height: 0;
+  touch-action: none; /* hand horizontal drag entirely to JS — no browser gesture fight */
 }
 
 .badge-row {
@@ -276,8 +277,11 @@ html, body {
 
 .detail-scroll {
   flex: 1;
+  min-height: 0; /* without this, flex items refuse to shrink and overflow-y never triggers */
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  touch-action: pan-y; /* native vertical scroll, independent of .card-face's swipe handling */
+  overscroll-behavior: contain;
   padding: 18px 22px calc(18px + var(--safe-bottom));
 }
 
