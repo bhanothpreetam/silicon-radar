@@ -13,6 +13,7 @@ class Config:
     # --- Gemini API (get from https://aistudio.google.com/apikey) ---
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
     GEMINI_MODEL: str = "gemini-2.5-flash"    # Free tier: separate quota from 2.0-flash
+    INTELLIGENCE_PROMPT_VERSION: str = os.getenv("INTELLIGENCE_PROMPT_VERSION", "v1").lower()
 
     # --- Supabase (get from your project's Settings > API) ---
     SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")

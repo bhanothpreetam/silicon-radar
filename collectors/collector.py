@@ -7,6 +7,7 @@ All free, no paid API keys needed.
 import time
 import httpx
 import feedparser
+from bs4 import BeautifulSoup
 from datetime import datetime, timezone
 from typing import Optional
 import logging
@@ -17,9 +18,31 @@ from db.models import insert_raw_item, get_sources
 log = logging.getLogger(__name__)
 
 
-def _truncate(text: str, max_chars: int = 8000) -> str:
-    """Truncate text to avoid massive token usage on Gemini."""
+MAX_RAW_TEXT_CHARS = 40_000
+
+
+def _truncate(text: str, max_chars: int = MAX_RAW_TEXT_CHARS) -> str:
+    """Bound stored source text while retaining enough material for v2 briefs."""
     return text[:max_chars] if text else ""
+
+
+def _clean_article_text(value: str) -> str:
+    """Turn an RSS HTML body into dense plain text without navigation markup."""
+    if not value:
+        return ""
+    return BeautifulSoup(value, "html.parser").get_text(" ", strip=True)
+
+
+def _rss_body(entry: dict) -> str:
+    """Select the richest body a feed exposes instead of preferring its teaser."""
+    candidates = [entry.get("summary", ""), entry.get("description", "")]
+    candidates.extend(
+        part.get("value", "")
+        for part in (entry.get("content", []) or [])
+        if isinstance(part, dict)
+    )
+    cleaned = [_clean_article_text(value) for value in candidates if value]
+    return max(cleaned, key=len, default="")
 
 
 # ---------------------------------------------------------------------------
@@ -42,13 +65,10 @@ def collect_rss(source_id: int, feed_url: str, max_items: int = 20) -> int:
             if not url:
                 continue
 
-            # Get body text — different feeds use different fields
-            raw_text = (
-                entry.get("summary", "")
-                or entry.get("content", [{}])[0].get("value", "")
-                or entry.get("description", "")
-            )
-            raw_text = _truncate(f"{title}\n\n{raw_text}")
+            # Feeds often expose both a short summary and a full content body.
+            # Keep the richest version so the v2 prompt can reconstruct the
+            # source's actual reasoning rather than elaborate from a teaser.
+            raw_text = _truncate(f"{title}\n\n{_rss_body(entry)}")
 
             # Parse published date
             published = None

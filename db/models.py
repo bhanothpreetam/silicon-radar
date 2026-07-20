@@ -119,10 +119,23 @@ def get_unprocessed_items(limit: int = 50):
 # intelligence_cards
 # ---------------------------------------------------------------------------
 
+# Notification, digest, quiz, and discovery paths do not render the potentially
+# large v2 deep_dive JSON. Keep those backend reads compact; the Mini App fetches
+# the full row directly when it needs the long-form reader.
+COMPACT_CARD_COLUMNS = ",".join([
+    "id", "raw_item_id", "one_line_summary", "what_happened", "who_is_involved",
+    "tech_layer", "why_technical", "why_strategic", "eli5_explanation",
+    "textbook_concepts", "textbook_bridge", "industry_bridge", "flashcard_q1",
+    "flashcard_a1", "flashcard_q2", "flashcard_a2", "flashcard_q3",
+    "flashcard_a3", "quiz_question", "quiz_answer", "rabbit_hole",
+    "research_angle", "startup_gap", "watch_next", "importance_score",
+    "novelty_score", "notify", "notification_level", "prompt_version", "generated_at",
+])
+
 def insert_intelligence_card(raw_item_id: int, card: dict) -> int:
     """Insert a generated intelligence card. Returns new card ID."""
     client = get_client()
-    resp = client.table('intelligence_cards').insert({
+    payload = {
         'raw_item_id': raw_item_id,
         'one_line_summary': card.get('one_line_summary'),
         'what_happened': card.get('what_happened'),
@@ -150,7 +163,14 @@ def insert_intelligence_card(raw_item_id: int, card: dict) -> int:
         'novelty_score': card.get('novelty_score', 0.5),
         'notify': card.get('notify', False),
         'notification_level': card.get('notification_level', 'none'),
-    }).execute()
+        'prompt_version': card.get('prompt_version', 'v1'),
+    }
+    # Only send the v2-only column when the generator actually produced it.
+    # This keeps v1 compatible with databases where the optional migration has
+    # not been applied yet.
+    if card.get('deep_dive'):
+        payload['deep_dive'] = card['deep_dive']
+    resp = client.table('intelligence_cards').insert(payload).execute()
     return resp.data[0]['id']
 
 
@@ -163,7 +183,7 @@ def get_pending_notifications():
 
     query = (
         client.table('intelligence_cards')
-        .select('*')
+        .select(COMPACT_CARD_COLUMNS)
         .eq('notify', True)
         .order('importance_score', desc=True)
         .limit(20)
@@ -204,7 +224,7 @@ def get_daily_digest_cards(limit: int = 10):
 
     cards_resp = (
         client.table('intelligence_cards')
-        .select('*')
+        .select(COMPACT_CARD_COLUMNS)
         .gte('generated_at', cutoff)
         .gte('importance_score', config.MIN_IMPORTANCE_FOR_DIGEST)
         .order('importance_score', desc=True)

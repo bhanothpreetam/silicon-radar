@@ -8,6 +8,7 @@ DOM TouchEvents, which cannot verify native scrolling.
 
 import contextlib
 import json
+import os
 import socket
 import threading
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -18,6 +19,120 @@ from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
 MINIAPP = ROOT / "miniapp"
+
+
+DEEP_DIVE = {
+    "article_type": "technical_explainer",
+    "title": "HBM pressure moves the accelerator bottleneck into packaging",
+    "subtitle": "More compute only matters when memory and assembly scale with it.",
+    "reading_time_minutes": 11,
+    "thesis": (
+        "The constraint is no longer the GPU alone. Memory bandwidth, package yield, "
+        "and assembly throughput now determine how much accelerator compute can ship."
+    ),
+    "source_assessment": {
+        "evidence_quality": "strong_secondary",
+        "confidence": "high",
+        "limitations": "Supplier allocation data is directional rather than a complete market census.",
+    },
+    "evidence": [
+        {
+            "fact": "Memory capacity and packaging throughput tightened in the same delivery window.",
+            "significance": "Adding GPU wafers cannot raise shipments if packaged HBM systems remain scarce.",
+            "status": "reported",
+        }
+    ],
+    "prerequisites": [
+        {
+            "term": "Memory bandwidth",
+            "explanation": "Bandwidth is the rate at which operands can reach the compute fabric.",
+            "why_it_matters_here": "Idle arithmetic units cannot convert theoretical FLOPS into useful throughput.",
+        }
+    ],
+    "sections": [
+        {
+            "heading": "The bottleneck moved above the die",
+            "kind": "mechanism",
+            "content": (
+                "Accelerator delivery is a pipeline: fabricate logic, fabricate memory, "
+                "assemble the package, validate it, and integrate the server.\n\n"
+                "Increasing capacity at one stage exposes the next constrained stage."
+            ),
+            "key_insight": "A faster GPU design has zero market value until the complete system can ship.",
+        }
+    ],
+    "worked_examples": [
+        {
+            "title": "A constrained delivery pipeline",
+            "setup": "Assume 100 GPU dies but packaging capacity for only 70 complete modules.",
+            "steps": ["Start with 100 good dies", "Package 70 modules", "Leave 30 dies waiting"],
+            "result": "Shipment capacity is 70 modules, so extra die supply does not improve delivery.",
+        }
+    ],
+    "system_connections": [
+        {
+            "layer": "manufacturing",
+            "connection": "HBM and logic must be assembled into one high-yield package.",
+            "consequence": "Package yield becomes a system-level performance constraint.",
+        }
+    ],
+    "tradeoffs": [
+        {
+            "decision": "Increase HBM bandwidth through wider interfaces",
+            "gains": "More sustained accelerator utilization",
+            "costs": "Package area, routing, power, and assembly complexity",
+            "breaks_when": "The workload is compute-bound or packaging yield collapses",
+        }
+    ],
+    "historical_arc": {
+        "before": "Accelerators were discussed primarily as individual chips.",
+        "change": "Model scale made memory and rack integration first-order constraints.",
+        "now": "The deployable rack is the meaningful unit of compute.",
+    },
+    "industry_map": [
+        {
+            "actor": "Memory suppliers",
+            "position": "They control qualified HBM volume.",
+            "implication": "Their execution directly gates accelerator shipments.",
+        }
+    ],
+    "research_frontier": {
+        "state_of_the_art": "Systems co-design compute, memory, packaging, and software scheduling.",
+        "bottlenecks": ["Thermal density", "Package yield"],
+        "open_questions": ["How should runtimes adapt when memory capacity varies by deployment?"],
+        "relevant_work": ["Search: heterogeneous accelerator memory scheduling"],
+    },
+    "aha_insights": [
+        {
+            "insight": "Manufacturing throughput can become an architectural property.",
+            "why_non_obvious": "Architecture diagrams usually stop at the package boundary.",
+        }
+    ],
+    "misconceptions": [
+        {
+            "misconception": "Peak FLOPS determines delivered AI capacity.",
+            "correction": "Delivered capacity is bounded by the slowest stage from fabrication through deployment.",
+        }
+    ],
+    "whiteboard_challenges": [
+        {
+            "question": "If package capacity rises 20% but HBM supply stays flat, what changes?",
+            "why_it_matters": "It tests whether the reader identifies the active bottleneck.",
+            "answer_outline": "Model each supply stage and take the minimum available throughput.",
+        }
+    ],
+    "key_takeaways": [
+        "The complete package, not the bare GPU, determines shippable compute.",
+        "Optimizing one stage frequently exposes another bottleneck.",
+    ],
+    "explore_next": [
+        {
+            "topic": "Advanced packaging yield",
+            "reason": "It connects physical assembly defects to system availability.",
+            "resource_hint": "CoWoS yield and known-good-die testing",
+        }
+    ],
+}
 
 
 CARDS = [
@@ -36,6 +151,8 @@ CARDS = [
         "notification_level": "wake_up",
         "generated_at": "2026-07-21T08:00:00Z",
         "notify": True,
+        "prompt_version": "v2",
+        "deep_dive": DEEP_DIVE,
     },
     {
         "id": 102,
@@ -168,9 +285,26 @@ def run():
         page.get_by_text("Priority", exact=True).click()
         page.get_by_text("All", exact=True).click()
         assert page.locator("#counter").inner_text() == "1 / 4"
+        assert page.locator(".more-btn").first.inner_text().startswith("Deep dive")
         page.locator(".more-btn").first.click()
         assert page.locator(".card").first.evaluate("el => el.classList.contains('expanded')")
+        assert page.locator(".deep-dive").count() == 1
+        assert "package" in page.locator(".deep-thesis").inner_text().lower()
+        assert page.locator(".foundation-card").count() == 1
+        assert page.locator(".challenge-card").count() == 1
+        assert page.locator("#header").is_hidden()
+        if screenshot_path := os.getenv("MINIAPP_SCREENSHOT"):
+            page.screenshot(path=screenshot_path, full_page=False)
+        page.locator(".foundation-card summary").click()
+        assert page.locator(".foundation-card").evaluate("el => el.open")
+        page.locator(".detail-scroll").first.evaluate(
+            "el => { el.scrollTop = 300; el.dispatchEvent(new Event('scroll')); }"
+        )
+        assert page.locator(".detail-read-progress").first.evaluate(
+            "el => parseFloat(el.style.width) > 0"
+        )
         page.locator(".close-btn").first.click()
+        assert page.locator("#header").is_visible()
 
         # Real touch: a horizontal gesture must advance the feed.
         cdp = context.new_cdp_session(page)

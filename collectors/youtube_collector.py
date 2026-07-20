@@ -24,7 +24,7 @@ from db.models import insert_raw_item, get_client
 
 log = logging.getLogger(__name__)
 
-MAX_TRANSCRIPT_CHARS = 8000
+MAX_TRANSCRIPT_CHARS = 40_000  # v2 needs the lecture's complete causal arc where available
 MIN_TRANSCRIPT_CHARS = 1200  # skips Shorts/teasers — not enough content for a real card
 FEED_URL = "https://www.youtube.com/feeds/videos.xml?channel_id={cid}"
 

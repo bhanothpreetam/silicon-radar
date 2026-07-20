@@ -53,8 +53,18 @@ class GeminiKeyRotator:
     def all_exhausted(self) -> bool:
         return len(self.exhausted) >= len(self.keys)
 
-# Load the prompt template once at startup
-PROMPT_TEMPLATE = (Path(__file__).parent.parent / "prompts" / "intelligence_card_v1.txt").read_text()
+# Load the selected prompt template once at startup. v2 is opt-in because it
+# persists a structured deep_dive JSON object that requires the accompanying
+# Supabase column migration.
+PROMPT_VERSION = config.INTELLIGENCE_PROMPT_VERSION
+if PROMPT_VERSION not in {"v1", "v2"}:
+    raise ValueError(
+        f"Unsupported INTELLIGENCE_PROMPT_VERSION={PROMPT_VERSION!r}; expected 'v1' or 'v2'"
+    )
+PROMPT_TEMPLATE = (
+    Path(__file__).parent.parent / "prompts" / f"intelligence_card_{PROMPT_VERSION}.txt"
+).read_text()
+SOURCE_CHAR_LIMIT = 40_000 if PROMPT_VERSION == "v2" else 6_000
 
 # Relevance pre-filter — skip items with no semiconductor/AI-hardware keywords
 KEYWORDS = [
@@ -201,7 +211,7 @@ def generate_intelligence_card(
         return None
 
     prompt = PROMPT_TEMPLATE.format(
-        raw_text=raw_text[:6000],
+        raw_text=raw_text[:SOURCE_CHAR_LIMIT],
         url=url,
         source_type=source_type,
     )
@@ -228,6 +238,7 @@ def generate_intelligence_card(
             )
 
             card = json.loads(response.text)
+            card["prompt_version"] = PROMPT_VERSION
 
             # Adjust importance based on source credibility
             credibility_boost = (credibility - 5) * 0.02

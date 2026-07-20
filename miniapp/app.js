@@ -166,6 +166,217 @@ function relativeAge(isoDate) {
   return `${Math.floor(hours / 24)}d`;
 }
 
+function values(value) {
+  return Array.isArray(value) ? value.filter(Boolean) : [];
+}
+
+function paragraphs(text) {
+  if (!text) return "";
+  return String(text)
+    .split(/\n\s*\n/)
+    .filter(Boolean)
+    .map((paragraph) => `<p>${esc(paragraph.trim())}</p>`)
+    .join("");
+}
+
+function bulletList(items, className = "deep-list") {
+  const rows = values(items).map((item) => `<li>${esc(item)}</li>`).join("");
+  return rows ? `<ul class="${className}">${rows}</ul>` : "";
+}
+
+function renderDeepDive(card) {
+  const deep = card.deep_dive;
+  if (!deep || typeof deep !== "object" || !deep.thesis) return "";
+
+  const blocks = [];
+  const toc = [];
+  let blockIndex = 0;
+
+  function addBlock(label, icon, body, className = "") {
+    if (!body) return;
+    const anchor = `deep-${card.id}-${blockIndex++}`;
+    toc.push(`<button type="button" data-scroll-target="${anchor}">${esc(label)}</button>`);
+    blocks.push(`
+      <section class="deep-section ${className}" data-deep-section="${anchor}">
+        <div class="deep-section-heading"><span>${icon}</span><h3>${esc(label)}</h3></div>
+        ${body}
+      </section>`);
+  }
+
+  const assessment = deep.source_assessment || {};
+  const articleType = String(deep.article_type || "analysis").replace(/_/g, " ");
+  const readingTime = Number(deep.reading_time_minutes) || null;
+  const assessmentMeta = [
+    assessment.confidence ? `${assessment.confidence} confidence` : null,
+    assessment.evidence_quality ? String(assessment.evidence_quality).replace(/_/g, " ") : null,
+  ].filter(Boolean);
+
+  const hero = `
+    <div class="deep-hero">
+      <div class="deep-kicker">Research brief · ${esc(articleType)}</div>
+      <h2>${esc(deep.title || card.one_line_summary || "Deep dive")}</h2>
+      ${deep.subtitle ? `<div class="deep-subtitle">${esc(deep.subtitle)}</div>` : ""}
+      <div class="deep-meta">
+        ${readingTime ? `<span>◷ ${readingTime} min</span>` : ""}
+        ${assessmentMeta.map((item) => `<span>${esc(item)}</span>`).join("")}
+      </div>
+      <div class="deep-thesis"><span>Thesis</span>${paragraphs(deep.thesis)}</div>
+      ${assessment.limitations ? `
+        <div class="deep-limit"><b>Evidence boundary</b>${paragraphs(assessment.limitations)}</div>` : ""}
+    </div>`;
+
+  const evidence = values(deep.evidence)
+    .map((item) => `
+      <article class="evidence-card">
+        <div class="evidence-status">${esc(item.status || "source")}</div>
+        <div class="evidence-fact">${esc(item.fact)}</div>
+        ${item.significance ? `<div class="evidence-why">${esc(item.significance)}</div>` : ""}
+      </article>`)
+    .join("");
+  addBlock("Evidence", "◉", evidence ? `<div class="evidence-grid">${evidence}</div>` : "");
+
+  const prerequisites = values(deep.prerequisites)
+    .map((item) => `
+      <details class="foundation-card">
+        <summary>${esc(item.term)}</summary>
+        <div class="foundation-body">
+          ${paragraphs(item.explanation)}
+          ${item.why_it_matters_here ? `<div class="foundation-link"><b>Why it matters here</b>${paragraphs(item.why_it_matters_here)}</div>` : ""}
+        </div>
+      </details>`)
+    .join("");
+  addBlock("Foundations", "◇", prerequisites, "foundations-section");
+
+  values(deep.sections).forEach((section) => {
+    if (!section || !section.content) return;
+    const kind = section.kind ? `<span class="section-kind">${esc(String(section.kind).replace(/_/g, " "))}</span>` : "";
+    const insight = section.key_insight
+      ? `<div class="key-insight"><b>Key insight</b>${paragraphs(section.key_insight)}</div>`
+      : "";
+    addBlock(
+      section.heading || "Analysis",
+      "◆",
+      `${kind}<div class="deep-prose">${paragraphs(section.content)}</div>${insight}`,
+      "narrative-section"
+    );
+  });
+
+  const examples = values(deep.worked_examples)
+    .map((item) => `
+      <article class="worked-card">
+        <h4>${esc(item.title || "Worked reasoning")}</h4>
+        ${paragraphs(item.setup)}
+        ${bulletList(item.steps, "reasoning-steps")}
+        ${item.result ? `<div class="worked-result"><b>Result</b>${paragraphs(item.result)}</div>` : ""}
+      </article>`)
+    .join("");
+  addBlock("Worked reasoning", "∑", examples);
+
+  const connections = values(deep.system_connections)
+    .map((item) => `
+      <article class="connection-card">
+        <div class="connection-layer">${esc(String(item.layer || "system").replace(/_/g, " "))}</div>
+        <div>${esc(item.connection)}</div>
+        ${item.consequence ? `<div class="connection-consequence">→ ${esc(item.consequence)}</div>` : ""}
+      </article>`)
+    .join("");
+  addBlock("Across the system", "⌘", connections ? `<div class="connection-grid">${connections}</div>` : "");
+
+  const tradeoffs = values(deep.tradeoffs)
+    .map((item) => `
+      <article class="tradeoff-card">
+        <h4>${esc(item.decision)}</h4>
+        <dl>
+          <div><dt>Gains</dt><dd>${esc(item.gains)}</dd></div>
+          <div><dt>Costs</dt><dd>${esc(item.costs)}</dd></div>
+          <div><dt>Breaks when</dt><dd>${esc(item.breaks_when)}</dd></div>
+        </dl>
+      </article>`)
+    .join("");
+  addBlock("Architect's tradeoffs", "⇄", tradeoffs);
+
+  const history = deep.historical_arc || {};
+  const historyBody = [
+    ["Before", history.before],
+    ["What changed", history.change],
+    ["Now", history.now],
+  ]
+    .filter(([, text]) => text)
+    .map(([label, text]) => `<div class="timeline-step"><b>${label}</b>${paragraphs(text)}</div>`)
+    .join("");
+  addBlock("How we got here", "↝", historyBody, "history-section");
+
+  const industry = values(deep.industry_map)
+    .map((item) => `
+      <article class="industry-card">
+        <h4>${esc(item.actor)}</h4>
+        <div>${esc(item.position)}</div>
+        ${item.implication ? `<div class="industry-implication">${esc(item.implication)}</div>` : ""}
+      </article>`)
+    .join("");
+  addBlock("Industry map", "▦", industry ? `<div class="industry-grid">${industry}</div>` : "");
+
+  const frontier = deep.research_frontier || {};
+  const frontierBody = [
+    frontier.state_of_the_art ? `<div class="deep-prose">${paragraphs(frontier.state_of_the_art)}</div>` : "",
+    bulletList(frontier.bottlenecks),
+    values(frontier.open_questions).length
+      ? `<h4 class="subhead">Open questions</h4>${bulletList(frontier.open_questions)}` : "",
+    values(frontier.relevant_work).length
+      ? `<h4 class="subhead">Relevant work</h4>${bulletList(frontier.relevant_work)}` : "",
+  ].join("");
+  addBlock("Research frontier", "⌬", frontierBody, "research-section");
+
+  const insights = values(deep.aha_insights)
+    .map((item) => `
+      <article class="insight-card">
+        <div>${esc(item.insight)}</div>
+        ${item.why_non_obvious ? `<p>${esc(item.why_non_obvious)}</p>` : ""}
+      </article>`)
+    .join("");
+  addBlock("Aha insights", "✦", insights);
+
+  const misconceptions = values(deep.misconceptions)
+    .map((item) => `
+      <article class="misconception-card">
+        <div class="misconception-wrong">Not quite: ${esc(item.misconception)}</div>
+        <div>${esc(item.correction)}</div>
+      </article>`)
+    .join("");
+  addBlock("Common misconceptions", "≠", misconceptions);
+
+  const challenges = values(deep.whiteboard_challenges)
+    .map((item, challengeIndex) => `
+      <details class="challenge-card">
+        <summary><span>${challengeIndex + 1}</span>${esc(item.question)}</summary>
+        <div class="challenge-body">
+          ${item.why_it_matters ? `<p><b>Why this matters:</b> ${esc(item.why_it_matters)}</p>` : ""}
+          ${item.answer_outline ? `<p><b>Reasoning path:</b> ${esc(item.answer_outline)}</p>` : ""}
+        </div>
+      </details>`)
+    .join("");
+  addBlock("Whiteboard challenges", "□", challenges);
+
+  addBlock("Key takeaways", "✓", bulletList(deep.key_takeaways, "takeaway-list"));
+
+  const explore = values(deep.explore_next)
+    .map((item) => `
+      <article class="explore-card">
+        <h4>${esc(item.topic)}</h4>
+        <div>${esc(item.reason)}</div>
+        ${item.resource_hint ? `<div class="resource-hint">Search: ${esc(item.resource_hint)}</div>` : ""}
+      </article>`)
+    .join("");
+  addBlock("Explore next", "→", explore);
+
+  return `
+    <div class="deep-dive">
+      ${hero}
+      ${toc.length ? `<nav class="deep-toc" aria-label="Deep dive sections">${toc.join("")}</nav>` : ""}
+      ${blocks.join("")}
+    </div>`;
+}
+
 function feedbackBar(card, compact) {
   const btns = REACTIONS.map(
     (r) => `<button class="fb-btn ${card.userReaction === r.key ? "active" : ""} ${
@@ -192,7 +403,7 @@ function renderCard(card, index) {
     ? `<span class="badge learning">📚 learning</span>`
     : "";
 
-  const sections = [
+  const legacySections = [
     ["💥", "What happened", card.what_happened],
     ["🔧", "Why it matters — technical", card.why_technical],
     ["📈", "Why it matters — strategic", card.why_strategic],
@@ -209,6 +420,7 @@ function renderCard(card, index) {
       </div>`
     )
     .join("");
+  const detailContent = renderDeepDive(card) || legacySections;
 
   const el = document.createElement("div");
   el.className = "card";
@@ -234,7 +446,7 @@ function renderCard(card, index) {
             <span class="source-name">${esc(card.sourceName)}</span>
             ${age ? `<span class="source-age">${age}</span>` : ""}
           </span>
-          <button class="more-btn" data-expand="${card.id}">Read more ↓</button>
+          <button class="more-btn" data-expand="${card.id}">${card.deep_dive ? "Deep dive" : "Read more"} ↓</button>
         </div>
         ${feedbackBar(card)}
       </div>
@@ -245,8 +457,9 @@ function renderCard(card, index) {
         <div class="detail-title">${esc(card.one_line_summary || "")}</div>
         <button class="close-btn" data-collapse="${card.id}">✕</button>
       </div>
+      <div class="detail-read-track"><div class="detail-read-progress"></div></div>
       <div class="detail-scroll">
-        ${sections}
+        ${detailContent}
         <button class="source-btn" data-source-url="${esc(card.url)}">🔗 Read source</button>
       </div>
       ${feedbackBar(card)}
@@ -280,6 +493,9 @@ function goTo(newIndex, withHaptic = true) {
 
 function expandCard(cardId) {
   expandedId = cardId;
+  document.getElementById("app").classList.add("detail-open");
+  const hint = document.querySelector(".swipe-hint");
+  if (hint) hint.remove();
   document.querySelectorAll(".card").forEach((c) => {
     c.classList.toggle("expanded", Number(c.dataset.cardId) === cardId);
   });
@@ -288,6 +504,7 @@ function expandCard(cardId) {
 
 function collapseCard() {
   expandedId = null;
+  document.getElementById("app").classList.remove("detail-open");
   document.querySelectorAll(".card").forEach((c) => c.classList.remove("expanded"));
   haptic("light");
 }
@@ -448,9 +665,29 @@ function attachDelegatedEvents() {
     const srcBtn = e.target.closest("[data-source-url]");
     if (srcBtn && srcBtn.dataset.sourceUrl) return openUrl(srcBtn.dataset.sourceUrl);
 
+    const scrollBtn = e.target.closest("[data-scroll-target]");
+    if (scrollBtn) {
+      const cardEl = scrollBtn.closest(".card");
+      const target = cardEl && cardEl.querySelector(
+        `[data-deep-section="${scrollBtn.dataset.scrollTarget}"]`
+      );
+      if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+
     const fbBtn = e.target.closest(".fb-btn");
     if (fbBtn) return handleReaction(Number(fbBtn.dataset.card), fbBtn.dataset.reaction);
   });
+
+  // scroll does not bubble, so capture it at the stack and update the active
+  // article's compact reading-progress indicator.
+  stackEl.addEventListener("scroll", (e) => {
+    if (!e.target.classList || !e.target.classList.contains("detail-scroll")) return;
+    const maxScroll = e.target.scrollHeight - e.target.clientHeight;
+    const progress = maxScroll > 0 ? (e.target.scrollTop / maxScroll) * 100 : 100;
+    const bar = e.target.closest(".card-detail").querySelector(".detail-read-progress");
+    if (bar) bar.style.width = `${Math.min(100, Math.max(0, progress))}%`;
+  }, true);
 }
 
 function attachLensEvents() {

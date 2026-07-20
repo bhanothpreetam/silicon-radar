@@ -61,7 +61,14 @@ The production app on `main` is the stable single-feed reader. The
 - **Learn** — concept-learning cards
 - **Trial** — probation-source auditions
 
-See [docs/VNEXT.md](docs/VNEXT.md) for the experiment guardrails and roadmap.
+It also includes an opt-in v2 research brief for the expanded reader. v2 uses a
+fuller source window and produces evidence, prerequisite, mechanism, tradeoff,
+cross-layer, historical, industry, and research sections in the same Gemini call
+as the compact card. Existing cards retain the original expanded view.
+
+See [docs/VNEXT.md](docs/VNEXT.md) for the experiment guardrails and roadmap,
+and [docs/DEEP_DIVE_V2.md](docs/DEEP_DIVE_V2.md) for the content contract and
+activation steps.
 
 ## Configuration
 
@@ -69,6 +76,7 @@ Python 3.11 or newer is recommended. Copy `.env.example` to `.env` and configure
 
 ```dotenv
 GEMINI_API_KEYS=key1,key2,key3
+INTELLIGENCE_PROMPT_VERSION=v1
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_KEY=your_key
 TELEGRAM_TOKEN=your_bot_token
@@ -119,6 +127,7 @@ verify horizontal swipe and native vertical scrolling:
 
 ```bash
 python3 tests/miniapp_vnext_smoke.py
+python3 -m unittest tests/test_deep_dive_v2.py tests/test_content_depth.py
 ```
 
 It requires Python Playwright and its Chromium browser. The production Mini App

@@ -29,6 +29,18 @@ additional API calls, and does not change collection, scoring, notification, or
 probation behavior. Card age is also visible beside the source so users can
 distinguish a new signal from backlog at a glance.
 
+## Second experimental slice: research deep dives
+
+Prompt v2 generates a compact card and a structured long-form research brief in
+the same Gemini request. The expanded Mini App view renders evidence,
+prerequisites, causal narrative sections, worked reasoning, cross-layer
+connections, tradeoffs, historical context, industry positioning, research
+frontiers, misconceptions, and whiteboard challenges.
+
+The experiment is opt-in through `INTELLIGENCE_PROMPT_VERSION=v2` and requires
+the small JSONB migration documented in [DEEP_DIVE_V2.md](DEEP_DIVE_V2.md).
+Existing v1 cards continue using the legacy Read more view.
+
 ## Guardrails
 
 - `main` remains the production branch.
@@ -79,6 +91,7 @@ Run the browser smoke test from the repository root:
 
 ```bash
 python3 tests/miniapp_vnext_smoke.py
+python3 -m unittest tests/test_deep_dive_v2.py tests/test_content_depth.py
 ```
 
 It mocks Supabase, checks lens counts and filtering, expands a card, performs a
