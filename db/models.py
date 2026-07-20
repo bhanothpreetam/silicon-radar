@@ -176,12 +176,23 @@ def get_pending_notifications():
         return []
 
     item_ids = [c['raw_item_id'] for c in cards_resp.data]
-    items_resp = client.table('raw_items').select('id,title,url').in_('id', item_ids).execute()
+    items_resp = client.table('raw_items').select('id,title,url,source_id').in_('id', item_ids).execute()
     items = {r['id']: r for r in items_resp.data}
+
+    # Attach source status so probation cards can be visually flagged
+    source_ids = list({r['source_id'] for r in items_resp.data if r.get('source_id')})
+    statuses = {}
+    if source_ids:
+        try:
+            src_resp = client.table('sources').select('id,status').in_('id', source_ids).execute()
+            statuses = {r['id']: r.get('status') or 'trusted' for r in src_resp.data}
+        except Exception:
+            pass  # status column may not exist yet
 
     return [
         {**c, 'title': items.get(c['raw_item_id'], {}).get('title'),
-               'url': items.get(c['raw_item_id'], {}).get('url')}
+               'url': items.get(c['raw_item_id'], {}).get('url'),
+               'source_status': statuses.get(items.get(c['raw_item_id'], {}).get('source_id'), 'trusted')}
         for c in cards_resp.data
     ]
 
@@ -236,7 +247,8 @@ def save_feedback(card_id: int, reaction: str):
 
 
 def get_sources():
-    """Get all active sources."""
+    """Get all active sources (trusted + probation; excludes blacklisted/shelved)."""
     client = get_client()
     resp = client.table('sources').select('*').order('credibility', desc=True).execute()
-    return resp.data
+    return [s for s in resp.data
+            if (s.get('status') or 'trusted') in ('trusted', 'probation')]

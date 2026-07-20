@@ -123,6 +123,15 @@ async def send_notification(bot: Bot, card: dict, card_id: int, url: str):
     else:
         text = format_ping(card, url)
 
+    # Probation sources are visually contained: the reader should know
+    # their reaction is judging the SOURCE, not just this article
+    if card.get("source_status") == "probation":
+        text = (
+            "🧪 <b>PROBATION AUDITION</b> — new source on trial\n\n"
+            + text
+            + "\n\n<i>How did this source do? Your reaction decides if it stays.</i>"
+        )
+
     # Telegram hard limit is 4096 chars; truncate gracefully
     MAX_LEN = 4000
     if len(text) > MAX_LEN:

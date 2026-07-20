@@ -41,6 +41,13 @@ def main():
         print(f"         {a['audition'].get('verdict', '')[:90]}")
 
     print("\n" + "=" * 70)
+    print(f"VERIFIED YOUTUBE CHANNELS — {len(result.get('channels_verified', []))}")
+    print("=" * 70)
+    for ch in result.get("channels_verified", []):
+        print(f"  {ch['score']:<6} {ch['name']} ({ch['channel_id']})")
+        print(f"         {ch['audition'].get('verdict', '')[:90]}")
+
+    print("\n" + "=" * 70)
     print(f"CITED DOMAINS QUEUED FOR DEEP AUDITION — {len(result['domains_queued'])}")
     print("=" * 70)
     for d in result["domains_queued"]:

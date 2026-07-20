@@ -156,6 +156,16 @@ _LINK_SKIP = {
 }
 
 
+def _youtube_video_id(url: str) -> str | None:
+    parsed = urllib.parse.urlparse(url)
+    host = parsed.netloc.removeprefix("www.").lower()
+    if host.endswith("youtube.com"):
+        return urllib.parse.parse_qs(parsed.query).get("v", [None])[0]
+    if host == "youtu.be":
+        return parsed.path.lstrip("/").split("/")[0] or None
+    return None
+
+
 def _mine_endorsements(username: str, tweets: list) -> list[dict]:
     """
     Extract endorsement edges from a batch of tweets:
@@ -194,9 +204,20 @@ def _mine_endorsements(username: str, tweets: list) -> list[dict]:
                 if not url:
                     continue
                 domain = urllib.parse.urlparse(url).netloc.removeprefix("www.").lower()
-                if not domain or domain in _LINK_SKIP:
+                if not domain:
                     continue
-                if any(domain == s or domain.endswith("." + s) for s in _LINK_SKIP):
+                # YouTube links are channel-discovery signal, not domain noise:
+                # log the video id; citation graph resolves video → channel later
+                video_id = _youtube_video_id(url)
+                if video_id:
+                    events.append({
+                        "endorser": me, "endorser_type": "twitter",
+                        "target": video_id, "target_type": "youtube_video",
+                        "kind": "link", "evidence": t.url,
+                    })
+                    continue
+                if domain in _LINK_SKIP or any(
+                        domain == s or domain.endswith("." + s) for s in _LINK_SKIP):
                     continue
                 events.append({
                     "endorser": me, "endorser_type": "twitter",
@@ -331,3 +352,34 @@ def collect_twitter(source_id: int, accounts: list[str] | None = None) -> int:
     if accounts is None:
         accounts = TWITTER_ACCOUNTS
     return asyncio.run(collect_twitter_accounts(accounts, source_id))
+
+
+def collect_probation_twitter() -> int:
+    """
+    Collect from Twitter accounts currently on probation (rows in the
+    sources table, type='twitter', status='probation'). Each account's
+    items are stored under its own source row so the probation evaluator
+    can attribute reactions to the right source.
+    """
+    client = get_client()
+    try:
+        rows = (
+            client.table("sources").select("id,name,url")
+            .eq("type", "twitter").eq("status", "probation")
+            .execute().data or []
+        )
+    except Exception as e:
+        log.debug(f"probation twitter skipped: {e}")
+        return 0
+
+    total = 0
+    for r in rows:
+        handle = urllib.parse.urlparse(r["url"]).path.strip("/").split("/")[0]
+        if not handle:
+            continue
+        log.info(f"  [Twitter] 🧪 probation: @{handle}")
+        try:
+            total += asyncio.run(collect_twitter_accounts([handle], source_id=r["id"]))
+        except Exception as e:
+            log.error(f"  [Twitter] probation @{handle} failed: {e}")
+    return total

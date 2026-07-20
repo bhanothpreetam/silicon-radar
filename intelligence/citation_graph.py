@@ -55,6 +55,25 @@ def _is_skippable(domain: str) -> bool:
             or any(domain == s or domain.endswith("." + s) for s in all_skip))
 
 
+def _youtube_video_id(url: str) -> str | None:
+    """Extract a video id from watch/youtu.be/embed/shorts URL forms."""
+    try:
+        parsed = urllib.parse.urlparse(url)
+    except Exception:
+        return None
+    host = parsed.netloc.removeprefix("www.").lower()
+    if host == "youtu.be":
+        return parsed.path.lstrip("/").split("/")[0] or None
+    if host.endswith("youtube.com"):
+        if parsed.path == "/watch":
+            return urllib.parse.parse_qs(parsed.query).get("v", [None])[0]
+        for prefix in ("/embed/", "/shorts/", "/v/"):
+            if parsed.path.startswith(prefix):
+                vid = parsed.path[len(prefix):].split("/")[0]
+                return vid or None
+    return None
+
+
 def _is_self_endorsement(endorser: str, endorser_type: str,
                          target: str, target_type: str) -> bool:
     """A company tweeting links to its own site is not an endorsement."""
@@ -107,9 +126,14 @@ def mine_article_links(days: int = 7, max_articles: int = 40) -> int:
 
             # Only links inside paragraphs/article body — skips nav, footers, blogrolls
             targets = set()
+            video_targets = set()
             for a in soup.select("p a[href], article a[href]"):
                 href = a.get("href") or ""
                 if not href.startswith("http"):
+                    continue
+                vid = _youtube_video_id(href)
+                if vid:
+                    video_targets.add(vid)
                     continue
                 domain = urllib.parse.urlparse(href).netloc.removeprefix("www.").lower()
                 if (not domain or domain == src_domain
@@ -119,10 +143,22 @@ def mine_article_links(days: int = 7, max_articles: int = 40) -> int:
                     continue
                 targets.add(domain)
 
+            # Embedded videos are endorsements too
+            for iframe in soup.select("iframe[src]"):
+                vid = _youtube_video_id(iframe.get("src") or "")
+                if vid:
+                    video_targets.add(vid)
+
             for domain in list(targets)[:15]:  # cap per article — link farms
                 events.append({
                     "endorser": src_domain, "endorser_type": "domain",
                     "target": domain, "target_type": "domain",
+                    "kind": "article_link", "evidence": url,
+                })
+            for vid in list(video_targets)[:5]:
+                events.append({
+                    "endorser": src_domain, "endorser_type": "domain",
+                    "target": vid, "target_type": "youtube_video",
                     "kind": "article_link", "evidence": url,
                 })
 
@@ -132,6 +168,33 @@ def mine_article_links(days: int = 7, max_articles: int = 40) -> int:
         ).execute()
     log.info(f"  logged {len(events)} article-link edges")
     return len(events)
+
+
+# ---------------------------------------------------------------------------
+# YouTube video → channel resolution
+# ---------------------------------------------------------------------------
+
+_channel_cache: dict[str, tuple[str, str] | None] = {}
+
+
+def resolve_video_channel(video_id: str) -> tuple[str, str] | None:
+    """Resolve a video id to (channel_id, channel_name). Cached per run."""
+    if video_id in _channel_cache:
+        return _channel_cache[video_id]
+    result = None
+    try:
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+        with httpx.Client(timeout=10.0, follow_redirects=True, headers=headers) as http:
+            r = http.get(f"https://www.youtube.com/watch?v={video_id}")
+        import re as _re
+        cid = _re.search(r'"channelId":"(UC[a-zA-Z0-9_-]{22})"', r.text)
+        name = _re.search(r'"ownerChannelName":"([^"]+)"', r.text)
+        if cid:
+            result = (cid.group(1), name.group(1) if name else cid.group(1))
+    except Exception as e:
+        log.debug(f"  video {video_id}: channel resolution failed: {e}")
+    _channel_cache[video_id] = result
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -176,14 +239,37 @@ def rank_candidates(min_endorsers: int = 2) -> list[dict]:
     except Exception:
         already_discovered = set()
 
-    agg: dict[tuple, dict] = defaultdict(lambda: {"score": 0.0, "endorsers": set(), "kinds": defaultdict(int)})
+    from app.config import YOUTUBE_CHANNELS
+    tracked_channels = set(YOUTUBE_CHANNELS.values())
+
+    agg: dict[tuple, dict] = defaultdict(lambda: {"score": 0.0, "endorsers": set(), "kinds": defaultdict(int), "name": ""})
     for e in edges:
         target, ttype = e["target"], e["target_type"]
+        name = ""
+
+        # Resolve video endorsements up to their channel
+        if ttype == "youtube_video":
+            resolved = resolve_video_channel(target)
+            if not resolved:
+                continue
+            target, name = resolved
+            ttype = "youtube_channel"
+            # A channel's own account tweeting its videos isn't an endorsement
+            if e["endorser_type"] == "twitter":
+                import re as _re
+                norm_name = _re.sub(r"[^a-z0-9]", "", name.lower())
+                norm_endorser = _re.sub(r"[^a-z0-9]", "", e["endorser"].lower())
+                if norm_name and (norm_name == norm_endorser
+                                  or norm_name in norm_endorser or norm_endorser in norm_name):
+                    continue
+
         if ttype == "twitter" and target in tracked_accounts:
             continue
         if ttype == "domain" and (_root_domain(target) in tracked_domains or _is_skippable(target)):
             continue
-        if target in already_discovered:
+        if ttype == "youtube_channel" and target in tracked_channels:
+            continue
+        if target in already_discovered or f"channel:{target}" in already_discovered:
             continue
         if _is_self_endorsement(e["endorser"], e["endorser_type"], target, ttype):
             continue
@@ -192,10 +278,13 @@ def rank_candidates(min_endorsers: int = 2) -> list[dict]:
         entry["score"] += KIND_WEIGHTS.get(e["kind"], 0.3) * trust
         entry["endorsers"].add(e["endorser"])
         entry["kinds"][e["kind"]] += 1
+        if name:
+            entry["name"] = name
 
     ranked = [
         {
             "target": target, "target_type": ttype,
+            "name": v["name"] or target,
             "score": round(v["score"], 2),
             "endorsers": sorted(v["endorsers"]),
             "kinds": dict(v["kinds"]),
@@ -273,6 +362,69 @@ Return JSON: {{"relevance": 0.0, "depth": 0.0, "uniqueness": 0.0,
 
 
 # ---------------------------------------------------------------------------
+# YouTube channel audition
+# ---------------------------------------------------------------------------
+
+def audition_youtube_channel(channel_id: str, name: str, taste: dict, endorsement: dict) -> dict | None:
+    """Audition a candidate channel by titles + transcript samples of recent videos."""
+    import feedparser
+    from collectors.youtube_collector import fetch_transcript
+
+    feed = feedparser.parse(f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}")
+    if not feed.entries:
+        return None
+
+    titles = [e.get("title", "") for e in feed.entries[:10]]
+    samples = []
+    for entry in feed.entries[:5]:
+        vid = getattr(entry, "yt_videoid", None)
+        if not vid:
+            continue
+        transcript = fetch_transcript(vid)
+        if transcript and len(transcript) > 1200:
+            samples.append(f"[{entry.get('title', '')[:70]}]\n{transcript[:2500]}")
+        if len(samples) >= 2:
+            break
+
+    topics_str = "\n".join(f"  {t}: {w}" for t, w in list(taste["topics"].items())[:10])
+    titles_str = "\n".join(f"  - {t[:90]}" for t in titles)
+    samples_str = "\n\n".join(samples) if samples else "(no transcripts available)"
+    endorsed_by = ", ".join(endorsement["endorsers"][:5])
+
+    prompt = f"""You are auditioning a YouTube channel as a source for a personalized semiconductor radar.
+
+READER'S TOP INTERESTS (weight 0-1):
+{topics_str}
+
+CANDIDATE CHANNEL: {name}
+Endorsed (linked/embedded) by sources the reader trusts: {endorsed_by}
+
+Recent video titles:
+{titles_str}
+
+Transcript samples from recent videos:
+{samples_str}
+
+Score 0.0-1.0 based on what the channel actually publishes:
+- relevance: overlap with the reader's interests
+- depth: technical substance (engineering/analysis > news reading > hype/entertainment)
+- uniqueness: coverage the reader's current channels don't provide
+
+Return JSON: {{"relevance": 0.0, "depth": 0.0, "uniqueness": 0.0,
+"verdict": "under 15 words: what this channel is and whether it fits"}}"""
+
+    try:
+        a = _gemini_json(prompt, temperature=0.2)
+    except Exception as e:
+        log.warning(f"  channel {name}: audition failed: {e}")
+        return None
+
+    score = round(0.45 * a.get("relevance", 0) + 0.35 * a.get("depth", 0) + 0.20 * a.get("uniqueness", 0), 3)
+    return {"channel_id": channel_id, "name": name, "score": score,
+            "audition": a, "had_transcripts": bool(samples)}
+
+
+# ---------------------------------------------------------------------------
 # Full citation-graph discovery run
 # ---------------------------------------------------------------------------
 
@@ -280,6 +432,7 @@ def run_citation_discovery(
     mine_articles: bool = True,
     max_twitter_auditions: int = 8,
     max_domain_candidates: int = 10,
+    max_channel_auditions: int = 5,
     min_score: float = 0.55,
 ) -> dict:
     """
@@ -294,11 +447,33 @@ def run_citation_discovery(
     ranked = rank_candidates()
     twitter_cands = [c for c in ranked if c["target_type"] == "twitter"][:max_twitter_auditions]
     domain_cands = [c for c in ranked if c["target_type"] == "domain"][:max_domain_candidates]
-    log.info(f"  {len(ranked)} candidates ({len(twitter_cands)} twitter, {len(domain_cands)} domains to audition)")
+    channel_cands = [c for c in ranked if c["target_type"] == "youtube_channel"][:max_channel_auditions]
+    log.info(f"  {len(ranked)} candidates ({len(twitter_cands)} twitter, "
+             f"{len(domain_cands)} domains, {len(channel_cands)} youtube channels to audition)")
 
     taste = build_taste_vector()
     client = get_client()
-    verified_accounts, verified_domains = [], []
+    verified_accounts, verified_domains, verified_channels = [], [], []
+
+    log.info("=== Auditioning YouTube channels ===")
+    for cand in channel_cands:
+        result = audition_youtube_channel(cand["target"], cand.get("name") or cand["target"], taste, cand)
+        if result is None:
+            log.info(f"  {cand.get('name', cand['target'])}: feed/audition unavailable — skipped")
+            continue
+        status = "verified" if result["score"] >= min_score else "rejected"
+        log.info(f"  {result['name']}: {result['score']} → {status} — {result['audition'].get('verdict', '')[:60]}")
+        client.table("discovered_sources").upsert({
+            "domain": f"channel:{cand['target']}",
+            "name": result["name"][:120],
+            "feed_url": f"https://www.youtube.com/feeds/videos.xml?channel_id={cand['target']}",
+            "discovery_query": f"citation-graph: endorsed by {', '.join(cand['endorsers'][:5])}",
+            "audition": {**result["audition"], "deep": result["had_transcripts"], "endorsement": cand["kinds"]},
+            "audition_score": result["score"],
+            "status": status,
+        }, on_conflict="domain").execute()
+        if status == "verified":
+            verified_channels.append(result)
 
     log.info("=== Auditioning Twitter accounts ===")
     for cand in twitter_cands:
@@ -339,4 +514,5 @@ def run_citation_discovery(
         "ranked": ranked,
         "twitter_verified": verified_accounts,
         "domains_queued": verified_domains,
+        "channels_verified": verified_channels,
     }

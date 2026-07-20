@@ -158,7 +158,8 @@ def run_quick() -> int:
         total += n
 
     client = get_client()
-    src = client.table('sources').select('id').eq('type', 'twitter').execute()
+    # Hub rows only — probation twitter/youtube rows have their own source ids
+    src = client.table('sources').select('id').eq('type', 'twitter').order('id').execute()
     twitter_src_id = src.data[0]['id'] if src.data else 18
 
     tw_count = collect_twitter(source_id=twitter_src_id, accounts=TWITTER_TIER1)
@@ -166,8 +167,17 @@ def run_quick() -> int:
     total += tw_count
 
     try:
+        from collectors.twitter_collector import collect_probation_twitter
+        pt_count = collect_probation_twitter()
+        if pt_count:
+            log.info(f"Twitter probation: {pt_count} new items")
+        total += pt_count
+    except Exception as e:
+        log.error(f"Probation twitter collect failed: {e}")
+
+    try:
         from collectors.youtube_collector import collect_youtube
-        yt_src = client.table('sources').select('id').eq('type', 'youtube').execute()
+        yt_src = client.table('sources').select('id').eq('type', 'youtube').order('id').execute()
         if yt_src.data:
             yt_count = collect_youtube(source_id=yt_src.data[0]['id'])
             log.info(f"YouTube: {yt_count} new videos")
@@ -183,6 +193,17 @@ def run_notify():
     log.info("=== PHASE 3: Sending pending notifications ===")
     from notifications.telegram_bot import send_pending_notifications
     asyncio.run(send_pending_notifications())
+
+
+def run_probation_eval():
+    """Apply probation rules after notifications go out. Never fails the run."""
+    try:
+        from intelligence.probation import evaluate_probation
+        decisions = evaluate_probation()
+        if decisions:
+            log.info(f"Probation decisions: {[(d['name'], d['verdict']) for d in decisions]}")
+    except Exception as e:
+        log.warning(f"Probation evaluation skipped: {e}")
 
 
 def run_digest():
@@ -289,6 +310,7 @@ if __name__ == "__main__":
         if collected > 0:
             cards = run_process()
         run_notify()
+        run_probation_eval()
         if cards > 0:
             asyncio.run(send_success_ping(collected, cards))
     elif mode == "collect":
@@ -316,6 +338,11 @@ if __name__ == "__main__":
         if n > 0:
             run_process()
             run_notify()
+    elif mode == "promote":
+        from intelligence.probation import promote_verified, evaluate_probation
+        promoted = promote_verified()
+        log.info(f"Promoted {len(promoted)} verified source(s) to probation")
+        evaluate_probation()
     elif mode == "bot":
         run_bot()
     elif mode == "all":
@@ -324,6 +351,7 @@ if __name__ == "__main__":
         if collected > 0:
             cards = run_process()
         run_notify()
+        run_probation_eval()
         if cards > 0:
             asyncio.run(send_success_ping(collected, cards))
     else:
