@@ -268,25 +268,51 @@ async function handleReaction(cardId, reaction) {
 }
 
 function attachDrag() {
-  let startX = 0, currentDX = 0;
+  // Axis is undecided until the finger has moved a few px — only then do we
+  // commit to horizontal (capture the pointer, drive the swipe) or bail and
+  // let the browser's native vertical scroll take over untouched.
+  const AXIS_LOCK_PX = 6;
+  let startX = 0, startY = 0, currentDX = 0;
+  let axis = null; // null | "x" | "y"
+  let activePointerId = null;
 
   stackEl.addEventListener("pointerdown", (e) => {
     if (expandedId !== null) return; // detail view scrolls vertically instead
     if (e.target.closest("button, a")) return;
-    dragging = true;
     startX = e.clientX;
-    trackEl.classList.add("dragging");
-    stackEl.setPointerCapture(e.pointerId);
+    startY = e.clientY;
+    currentDX = 0;
+    axis = null;
+    activePointerId = e.pointerId;
   });
 
   stackEl.addEventListener("pointermove", (e) => {
-    if (!dragging) return;
-    currentDX = e.clientX - startX;
+    if (activePointerId === null || e.pointerId !== activePointerId) return;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+
+    if (axis === null) {
+      if (Math.abs(dx) < AXIS_LOCK_PX && Math.abs(dy) < AXIS_LOCK_PX) return;
+      axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+      if (axis === "x") {
+        dragging = true;
+        trackEl.classList.add("dragging");
+        stackEl.setPointerCapture(activePointerId);
+      } else {
+        activePointerId = null; // vertical: hand off to native scroll, we're done
+        return;
+      }
+    }
+
+    if (axis !== "x") return;
+    currentDX = dx;
     const base = -index * window.innerWidth;
     trackEl.style.transform = `translateX(${base + currentDX}px)`;
   });
 
   function endDrag() {
+    activePointerId = null;
+    axis = null;
     if (!dragging) return;
     dragging = false;
     trackEl.classList.remove("dragging");
