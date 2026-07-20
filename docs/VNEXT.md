@@ -91,7 +91,7 @@ Run the browser smoke test from the repository root:
 
 ```bash
 python3 tests/miniapp_vnext_smoke.py
-python3 -m unittest tests/test_deep_dive_v2.py tests/test_content_depth.py
+python3 -m unittest tests/test_deep_dive_v2.py tests/test_content_depth.py tests/test_demo_card.py
 ```
 
 It mocks Supabase, checks lens counts and filtering, expands a card, performs a

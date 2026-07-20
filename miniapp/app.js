@@ -6,6 +6,7 @@ const SUPABASE_URL = "https://qyfwvrdgbykzvahxoyyy.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF5Znd2cmRnYnlrenZhaHhveXl5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEzNzQxOTYsImV4cCI6MjA5Njk1MDE5Nn0.J4Tc_GANy3gjNonsHZzcNbtgvTjCJgCTASyBj5V20xo";
 
 const CARD_LIMIT = 60;
+const DEMO_MODE = new URLSearchParams(window.location.search).get("demo") === "deep";
 
 const LAYER_EMOJI = {
   process_node: "⚙️", microarchitecture: "🏗️", memory_hbm: "💾",
@@ -89,6 +90,20 @@ async function sb(path) {
 }
 
 async function loadCards() {
+  if (DEMO_MODE) {
+    const response = await fetch("demo-card.json?v=1");
+    if (!response.ok) throw new Error(`Demo card -> ${response.status}`);
+    const demo = await response.json();
+    return [{
+      ...demo,
+      isDemo: true,
+      isLearning: false,
+      sourceName: "Bits'nBrews · demo",
+      sourceStatus: "trusted",
+      userReaction: null,
+    }];
+  }
+
   const cards = await sb(
     `intelligence_cards?select=*&notify=eq.true&order=generated_at.desc&limit=${CARD_LIMIT}`
   );
@@ -574,6 +589,7 @@ async function handleReaction(cardId, reaction) {
     btn.classList.toggle("disabled", !isThis);
   });
   haptic("success");
+  if (card.isDemo) return;
   try {
     await postFeedback(cardId, reaction);
   } catch (e) {

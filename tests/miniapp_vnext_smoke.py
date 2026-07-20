@@ -344,6 +344,25 @@ def run():
         )
         assert scroll_state["briefTop"] > 0, scroll_state
 
+        # The deployable preview fixture must exercise the full reader without
+        # touching Supabase or posting demo reactions into production data.
+        demo_posts = []
+        page.on(
+            "request",
+            lambda request: demo_posts.append(request.url)
+            if request.method == "POST" else None,
+        )
+        page.goto(f"{base_url}/?demo=deep", wait_until="networkidle")
+        assert page.locator(".card").count() == 1
+        assert "Local cache miss rates" in page.locator(".card-title").inner_text()
+        page.locator(".more-btn").click()
+        assert "Local vs Global" in page.locator(".deep-hero h2").inner_text()
+        assert page.locator(".narrative-section").count() >= 5
+        assert page.locator(".challenge-card").count() == 3
+        page.locator('.fb-btn[data-reaction="brain"]').last.click()
+        page.wait_for_timeout(100)
+        assert demo_posts == []
+
         browser.close()
         print("Mini App vNext smoke test passed")
 

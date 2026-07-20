@@ -1,0 +1,312 @@
+{
+  "id": 900001,
+  "raw_item_id": 900001,
+  "one_line_summary": "Local cache miss rates diagnose a level—but inherit upstream traffic bias",
+  "what_happened": "Global miss rate measures misses against every request issued by the core; local miss rate measures misses only among accesses that reached a particular cache. The two metrics are algebraically compatible, but they answer different architectural questions and can both mislead when interpreted without the hierarchy that produced them.",
+  "who_is_involved": "CPU architects use local rates to inspect a cache level; performance engineers use global rates to estimate system cost; tools such as perf and gem5 expose counters whose denominator must be understood before optimization decisions are made.",
+  "tech_layer": ["microarchitecture", "software_stack"],
+  "why_technical": "An L2 local miss rate is a conditional probability: it describes the difficult request stream that survived L1 filtering. A 20% local L2 miss rate can coexist with a 2% global L2 miss rate when only 10% of core requests reach L2. Local rate helps diagnose the level, while global rate weights that behavior by how often the system invokes it. Neither metric isolates cache quality when inclusion, prefetching, heterogeneous upstream caches, or workload phase behavior changes the traffic distribution.",
+  "why_strategic": "The distinction determines whether an engineer modifies code, an upstream prefetcher, or the cache itself. Optimizing against the wrong denominator can make a block appear improved when only its input stream changed. The broader lesson is that subsystem metrics are conditional on the rest of the machine: attribution requires both end-to-end impact and local mechanism evidence.",
+  "eli5_explanation": "A cache hierarchy is a sequence of conditional filters. L1 observes every demand access; L2 observes only the accesses L1 could not satisfy. Therefore L2 is evaluated on a smaller and systematically harder population, not a random sample of the original workload. Local and global miss rates differ because their denominators represent those two populations.",
+  "textbook_concepts": ["cache hierarchy", "average memory access time", "conditional probability", "spatial locality", "temporal locality", "prefetching", "inclusive caches"],
+  "textbook_bridge": "Textbook AMAT equations already contain both views. The industry problem is causal attribution: real prefetchers, replacement policies, shared caches, heterogeneous cores, and coherence rules continuously change which requests reach each level.",
+  "industry_bridge": "The same measurement trap appears throughout systems work: a subsystem's apparent efficiency depends on upstream admission and filtering. Architects need a global metric for user-visible cost and a local metric plus traffic characterization for block-level diagnosis.",
+  "quiz_question": "If an improved L1 prefetcher halves the number of demand accesses reaching L2 while the L2 hardware is unchanged, which L2 metrics can improve and what can you legitimately conclude?",
+  "quiz_answer": "The global L2 miss rate can fall because fewer total core requests reach and miss L2. The local L2 rate may rise or fall because the residual stream has changed. Neither change proves that L2 itself improved; compare the same incoming trace or characterize reuse, prefetch traffic, and replacement behavior before attributing causality.",
+  "rabbit_hole": "Study misses per kilo-instruction and reuse-distance distributions to see how architects complement miss rate with workload-normalized demand and locality information.",
+  "research_angle": "Develop causal cache-evaluation methods that separate intrinsic policy quality from changes in upstream filtering, prefetch traffic, core type, and workload phase.",
+  "startup_gap": null,
+  "watch_next": ["perf counter denominator documentation", "gem5 demand-versus-prefetch miss accounting", "cache MPKI and reuse-distance studies"],
+  "importance_score": 0.82,
+  "novelty_score": 0.78,
+  "notify": true,
+  "notification_level": "brief",
+  "prompt_version": "v2",
+  "generated_at": "2026-07-21T00:00:00Z",
+  "url": "https://bitsnbrews.substack.com/p/global-miss-rate-vs-local-miss-rate",
+  "deep_dive": {
+    "article_type": "technical_explainer",
+    "title": "Local vs Global Miss Rate: Measuring a Cache Without Lying to Yourself",
+    "subtitle": "The denominator determines whether you are measuring system pain, block behavior, or an upstream filter.",
+    "reading_time_minutes": 12,
+    "thesis": "Global and local miss rates are not competing definitions; they are two projections of the same hierarchy. Global rate tells you how often a cache level ultimately hurts the core. Local rate conditions on requests that reached that level and is therefore better for diagnosis—but its input population was selected by every cache, prefetcher, and policy upstream. A serious evaluation needs both views plus a description of the traffic distribution.",
+    "source_assessment": {
+      "evidence_quality": "strong_secondary",
+      "confidence": "high",
+      "limitations": "The numerical examples establish the metric relationship, not universal miss rates for a specific processor. Real hardware counters also differ in whether they count demand accesses, prefetches, speculative requests, retries, and coherence traffic."
+    },
+    "evidence": [
+      {
+        "fact": "Local miss rate divides a cache level's misses by accesses that actually reached that level.",
+        "significance": "It measures behavior on the level's admitted request stream and removes the first-order effect of how many requests an upstream cache absorbed.",
+        "status": "confirmed"
+      },
+      {
+        "fact": "Global miss rate divides that level's misses by every memory request generated by the core.",
+        "significance": "It directly weights the miss by its frequency in the complete workload and therefore belongs in end-to-end AMAT reasoning.",
+        "status": "confirmed"
+      },
+      {
+        "fact": "In the worked stream, 1,000 core requests produce 100 L2 accesses and 20 L2 misses.",
+        "significance": "The same behavior is a 20% local L2 miss rate and a 2% global L2 miss rate; the apparent contradiction is entirely the denominator.",
+        "status": "confirmed"
+      },
+      {
+        "fact": "Requests reaching L2 are enriched for pointer chasing, sparse traversal, cold lookup, and other patterns that defeated L1 locality and prefetching.",
+        "significance": "A downstream cache sees a selected, harder workload, so raw local-rate comparisons can confuse input difficulty with design quality.",
+        "status": "inferred"
+      }
+    ],
+    "prerequisites": [
+      {
+        "term": "Cache hierarchy",
+        "explanation": "A core checks progressively larger and slower storage levels. L1 is closest to execution and sees nearly every demand access. L2 is consulted only after an L1 miss, and an LLC or DRAM request occurs only after additional failures. Each level therefore observes a request stream conditioned on upstream outcomes.",
+        "why_it_matters_here": "The denominator of a miss rate must match the population observed at that level. Treating L2 accesses as if they were an unbiased sample of core accesses destroys the central conditional relationship."
+      },
+      {
+        "term": "Conditional probability",
+        "explanation": "A local L2 miss rate is P(L2 miss | L1 miss): the probability that L2 misses given that the access already missed L1. The global L2 miss rate is P(L1 miss and L2 miss). By the probability chain rule, the global rate equals P(L1 miss) multiplied by P(L2 miss | L1 miss).",
+        "why_it_matters_here": "This formalism makes clear why both rates can be correct simultaneously and why the local rate depends on which events the upstream level admits."
+      },
+      {
+        "term": "Average Memory Access Time",
+        "explanation": "AMAT weights the latency of each hierarchy level by the probability that an access reaches it. It is an expectation over the path a request takes, not merely a sum of cache hit times. Rare DRAM trips can dominate performance because their penalty is hundreds of cycles.",
+        "why_it_matters_here": "Global miss rate already contains the upstream probability and can weight the final penalty directly. Local rate must be multiplied by every preceding miss probability."
+      },
+      {
+        "term": "Locality and traffic selection",
+        "explanation": "Temporal locality reuses recently accessed data; spatial locality accesses nearby addresses. L1 captures tight loops, stack data, and regular streams effectively. The remaining requests often have longer reuse distances, irregular addresses, or working sets larger than L1.",
+        "why_it_matters_here": "L2 does not receive merely fewer requests—it receives a systematically different distribution. That selection bias limits how confidently local rate can be called an intrinsic property of L2."
+      }
+    ],
+    "sections": [
+      {
+        "heading": "Two denominators, two engineering questions",
+        "kind": "problem",
+        "content": "Suppose a core issues N memory references. L1 sees approximately N demand lookups. If M1 references miss L1, L2 sees M1 relevant demand accesses. If M2 of those also miss L2, then the local L2 miss rate is M2/M1, while the global L2 miss rate is M2/N.\n\nThe global rate answers: how frequently does the complete workload escape both L1 and L2? This is the performance engineer's view because it tells us how often the next-level penalty enters core execution. The local rate answers: among the requests presented to L2, what fraction could L2 not retain or predict? This is closer to the cache designer's view.\n\nCalling either number the L2 miss rate without naming its denominator is incomplete. A profiler, simulator, paper, or vendor chart can make the hierarchy appear radically better or worse simply by choosing one view and leaving the conditioning implicit.",
+        "key_insight": "The numerator can be identical while the denominator changes by an order of magnitude; metric names without denominators are not architectural evidence."
+      },
+      {
+        "heading": "The AMAT equations are the same probability tree",
+        "kind": "worked_reasoning",
+        "content": "Using local rates, a two-level hierarchy can be written as AMAT = T_L1 + m_L1 × (T_L2 + m_L2,local × P_L2), where P_L2 is the latency paid after an L2 miss. The L2 time is multiplied by the chance of reaching L2; the lower-level penalty is multiplied by both conditional misses.\n\nDistribute m_L1 through the expression: AMAT = T_L1 + m_L1 × T_L2 + (m_L1 × m_L2,local) × P_L2. The product in parentheses is exactly m_L2,global. The global form is therefore AMAT = T_L1 + m_L1 × T_L2 + m_L2,global × P_L2.\n\nA common mistake is multiplying the global L2 rate by m_L1 again. That double-counts the L1 miss probability already embedded in the global number and underestimates the lower-level contribution.",
+        "key_insight": "Local and global forms are algebraically identical when probabilities are placed at the correct edges of the hierarchy."
+      },
+      {
+        "heading": "Why downstream caches appear worse",
+        "kind": "mechanism",
+        "content": "L1 receives the full workload, including the easiest reuse: loop bodies, hot stack locations, repeated metadata, and regular sequential traversal. These accesses often fit its capacity or are predictable enough for hardware prefetching. L1 removes them before L2 sees the demand stream.\n\nThe residual stream is enriched for long reuse distances, conflict patterns, pointer-dependent addresses, sparse graph neighborhoods, large hash tables, and cold data. These references are difficult for reasons that persist even when L2 has more capacity: their future addresses may not be available early enough to prefetch, or their working set may exceed multiple cache levels.\n\nConsequently, a high local L2 miss rate does not automatically mean that L2 is poorly designed. It can mean the level is playing against a harder conditional distribution. Conversely, a low local rate can result from an upstream cache admitting many easy accesses. Traffic characterization must accompany the rate.",
+        "key_insight": "The hierarchy performs selection: later levels are benchmarked on the failures of earlier levels, not on the original workload."
+      },
+      {
+        "heading": "Diagnosis requires controlled attribution",
+        "kind": "system",
+        "content": "Imagine an L1 prefetcher reduces the L1 miss rate from 10% to 5% without changing any L2 transistor or policy. The global L2 miss rate will usually fall because fewer total references can miss L2. Reporting that decline as an L2 improvement attributes an upstream success to the wrong block.\n\nLocal rate partially decouples invocation frequency from L2 behavior, but it does not hold the incoming trace constant. The improved L1 may remove predictable requests and leave a smaller, more irregular L2 stream, causing local rate to rise. That rise does not prove regression either.\n\nFor a controlled L2 comparison, architects can replay the same trace, report demand and prefetch traffic separately, examine misses per kilo-instruction, measure reuse distance, and compare latency or IPC impact. Block-level causality requires intervention or control, not one aggregate ratio.",
+        "key_insight": "Local rate removes upstream volume, not upstream selection; true decoupling requires controlling or describing the admitted trace."
+      },
+      {
+        "heading": "Where local rate stops being local",
+        "kind": "research",
+        "content": "Inclusive hierarchies couple replacement decisions across levels. If an inclusive LLC evicts a line, it may invalidate the corresponding L1 or L2 copy. An LLC policy change can therefore increase L1 misses even though the L1 design is untouched. Coherence invalidations introduce a similar cross-level cause.\n\nHeterogeneous cores complicate comparison further. A large aggressive P-core L1 and a smaller E-core L1 can feed the same downstream cache different volumes and different mixtures of requests. The L2 local rate can be higher behind the stronger L1 precisely because only the most pathological accesses survive.\n\nPrefetching changes both numerator and denominator. Useful prefetches convert future demand misses into hits, inaccurate prefetches consume capacity and bandwidth, and some counters include prefetch accesses while others report demand only. Without counter semantics, local rate can move in either direction while application performance does the opposite.",
+        "key_insight": "A physical cache level is not a statistically isolated component; inclusion, coherence, core type, and speculation make hierarchy behavior relational."
+      },
+      {
+        "heading": "How software engineers should read counters",
+        "kind": "industry",
+        "content": "When perf reports LLC-load-misses, the useful first question is not whether the number is high. Ask what event was counted, which accesses form the denominator, whether speculative and prefetch traffic appears, and whether the event is normalized per instruction, per load, or per LLC lookup. Hardware performance-monitoring events differ across microarchitectures and often contain caveats.\n\nFor code optimization, global impact matters first: did cycles per instruction, stall time, or off-chip traffic improve? Local counters then help locate the mechanism. A lower global miss rate paired with higher local L2 rate can be a success when L1 removed enough demand traffic. Optimizing solely to reduce a local percentage may increase total accesses, pollution, bandwidth, or energy.\n\nThe correct workflow moves from application outcome to hierarchy attribution, then validates the proposed cause with additional counters or controlled experiments.",
+        "key_insight": "Counters become evidence only after their event definition, denominator, and connection to execution time are explicit."
+      }
+    ],
+    "worked_examples": [
+      {
+        "title": "One trace, two honest miss rates",
+        "setup": "A core issues 1,000 memory references. L1 hits on 900. Of the 100 references reaching L2, 80 hit and 20 continue to the next level.",
+        "steps": [
+          "L1 local miss rate = 100 / 1,000 = 10%.",
+          "L2 local miss rate = 20 / 100 = 20%.",
+          "L2 global miss rate = 20 / 1,000 = 2%.",
+          "Probability check: 10% × 20% = 2%."
+        ],
+        "result": "The 20% value describes L2 effectiveness on admitted requests; the 2% value describes how often the full workload escapes L2. Neither contradicts the other."
+      },
+      {
+        "title": "AMAT with local and global forms",
+        "setup": "Assume T_L1 = 1 cycle, T_L2 = 10 cycles, next-level penalty = 200 cycles, m_L1 = 10%, and m_L2,local = 20%.",
+        "steps": [
+          "Local form: 1 + 0.10 × (10 + 0.20 × 200).",
+          "The parenthesized L2 path costs 50 cycles; weighted contribution is 5 cycles.",
+          "AMAT = 6 cycles.",
+          "Global L2 rate is 0.10 × 0.20 = 0.02; global form is 1 + 0.10 × 10 + 0.02 × 200 = 6 cycles."
+        ],
+        "result": "Both forms produce the same expectation. Multiplying 0.02 by the L1 rate again would incorrectly reduce the DRAM contribution from 4 cycles to 0.4."
+      }
+    ],
+    "system_connections": [
+      {
+        "layer": "microarchitecture",
+        "connection": "Replacement, associativity, inclusion, coherence, and prefetching determine both cache outcomes and which requests propagate downstream.",
+        "consequence": "A rate change cannot be attributed to one structure without controlling cross-level interactions."
+      },
+      {
+        "layer": "compiler",
+        "connection": "Loop transformations, data layout, tiling, and software prefetching alter locality before the hardware hierarchy observes it.",
+        "consequence": "Software can reduce global misses while making the residual local stream appear harder."
+      },
+      {
+        "layer": "os_runtime",
+        "connection": "Scheduling across heterogeneous cores and page placement changes working-set behavior and the cache path used by a thread.",
+        "consequence": "The same program can produce different local rates without any cache design change."
+      },
+      {
+        "layer": "distributed_system",
+        "connection": "Conditional-denominator mistakes recur in multi-tier storage and networking, where downstream services see only upstream misses or retries.",
+        "consequence": "Subsystem success rates must be paired with end-to-end frequency and admission policy."
+      }
+    ],
+    "tradeoffs": [
+      {
+        "decision": "Use global miss rate for optimization",
+        "gains": "Direct connection to workload frequency, AMAT, off-chip traffic, and user-visible cost.",
+        "costs": "Masks whether improvement came from the cache under study or an upstream filter.",
+        "breaks_when": "The goal is attributing quality to a particular cache policy or silicon budget."
+      },
+      {
+        "decision": "Use local miss rate for block diagnosis",
+        "gains": "Normalizes by accesses presented to the level and exposes how many admitted requests it saves.",
+        "costs": "The admitted distribution changes with upstream caches, cores, prefetchers, and workload phases.",
+        "breaks_when": "Two designs receive different traces or counters mix demand and speculative traffic."
+      },
+      {
+        "decision": "Add aggressive prefetching",
+        "gains": "Can hide latency and convert predictable future demand misses into hits.",
+        "costs": "Consumes bandwidth, cache capacity, energy, and tracking state; inaccurate requests can evict useful data.",
+        "breaks_when": "Address streams are dependent or irregular, or pollution costs exceed covered latency."
+      }
+    ],
+    "historical_arc": {
+      "before": "Simple hierarchy analysis often treated each cache as a clean stage with a single miss probability. The abstraction is useful for AMAT and textbook design-space exploration.",
+      "change": "Modern cores added deep speculation, multiple prefetchers, shared and sometimes inclusive levels, coherence, heterogeneous cores, and workloads with rapidly changing phases.",
+      "now": "Architects combine local and global rates with MPKI, latency, bandwidth, occupancy, reuse behavior, and controlled simulation. The miss rate remains useful, but no longer carries causal meaning alone."
+    },
+    "industry_map": [
+      {
+        "actor": "CPU architecture teams",
+        "position": "They must justify cache area, latency, policy, and energy under controlled workload suites.",
+        "implication": "Local behavior is necessary for diagnosis, but performance and power outcomes decide whether the block earns its budget."
+      },
+      {
+        "actor": "Performance-tool users",
+        "position": "They observe hardware events through perf, profilers, simulators, and vendor tools.",
+        "implication": "Optimization quality depends on reading event definitions and connecting counters to stalled execution rather than chasing a percentage."
+      },
+      {
+        "actor": "Intel and AMD hybrid systems",
+        "position": "Different core types and private-cache structures can feed shared hierarchy levels different request distributions.",
+        "implication": "Cross-core local-rate comparisons need workload, scheduling, and traffic controls."
+      }
+    ],
+    "research_frontier": {
+      "state_of_the_art": "Cache research evaluates replacement and prefetch policies with detailed simulation, workload suites, MPKI, IPC or speedup, bandwidth, coverage, accuracy, pollution, energy, and storage overhead. Increasingly, phase-aware and learned policies adapt to changing access distributions rather than optimizing one static rate.",
+      "bottlenecks": [
+        "Separating policy quality from changes in upstream admission and speculation",
+        "Evaluating heterogeneous and shared hierarchies without averaging away per-core behavior",
+        "Maintaining prefetch coverage without bandwidth and cache pollution",
+        "Producing hardware counters with precise, portable semantics"
+      ],
+      "open_questions": [
+        "Can causal interventions in simulation quantify how much of a downstream miss-rate change belongs to each upstream mechanism?",
+        "Which traffic signatures best predict when a local metric will reverse direction from end-to-end performance?",
+        "How should adaptive replacement policies share state across heterogeneous cores without allowing one traffic class to dominate?"
+      ],
+      "relevant_work": [
+        "Patterson and Hennessy: AMAT and cache hierarchy analysis",
+        "Search: cache replacement policy evaluation MPKI reuse distance",
+        "Search: prefetch accuracy coverage timeliness pollution",
+        "Search: heterogeneous-core shared cache partitioning"
+      ]
+    },
+    "aha_insights": [
+      {
+        "insight": "A higher local miss rate can accompany a faster overall system.",
+        "why_non_obvious": "An improved L1 may remove easy requests, leaving L2 a smaller but harder stream while global misses and AMAT fall."
+      },
+      {
+        "insight": "Local rate is conditional, not intrinsic.",
+        "why_non_obvious": "The metric sounds like a property of L2, but it is jointly produced by L2 and every mechanism determining which accesses reach it."
+      },
+      {
+        "insight": "An inclusive lower-level eviction can create an upper-level miss.",
+        "why_non_obvious": "Physical hierarchy direction suggests L1 affects L2, yet inclusion creates a reverse causal edge."
+      },
+      {
+        "insight": "Metric optimization can worsen the mechanism it is meant to represent.",
+        "why_non_obvious": "Adding easy speculative accesses can lower a percentage while consuming bandwidth and energy or polluting useful data."
+      }
+    ],
+    "misconceptions": [
+      {
+        "misconception": "A 20% L2 local miss rate means L2 is worse than an L1 with a 5% miss rate.",
+        "correction": "They are evaluated on different request populations. L1 sees the full stream; L2 sees the conditional failures that survived L1."
+      },
+      {
+        "misconception": "Global L2 miss rate should be multiplied by L1 miss rate in AMAT.",
+        "correction": "The global rate already includes the probability of missing L1. Multiplying again double-counts the upstream condition."
+      },
+      {
+        "misconception": "Local miss rate completely isolates the L2 design.",
+        "correction": "It normalizes request volume but not request composition. Inclusion, core type, prefetching, and phase behavior still shape the local stream."
+      },
+      {
+        "misconception": "A lower miss rate always means higher performance.",
+        "correction": "The change may add latency, bandwidth, pollution, energy, or speculative accesses. Validate cycles, IPC, and traffic alongside the rate."
+      }
+    ],
+    "whiteboard_challenges": [
+      {
+        "question": "A strictly inclusive LLC evicts a line that is still hot in L1. Which level should receive causal blame for the next L1 miss?",
+        "why_it_matters": "It exposes reverse coupling: a lower-level policy can alter an upper-level local metric.",
+        "answer_outline": "Separate the observed miss location from the eviction cause. Attribute the L1 miss event to inclusion-driven invalidation, then evaluate the LLC replacement decision and inclusion policy jointly."
+      },
+      {
+        "question": "The same pointer-chasing workload moves from a small E-core L1 to a stronger P-core L1 before reaching a shared L2. Why might L2 local miss rate rise on the P-core?",
+        "why_it_matters": "It tests whether the reader treats the admitted trace as a selected population rather than fixed input.",
+        "answer_outline": "The stronger P-core L1 removes more reusable accesses, leaving L2 only the most irregular subset. Compare global misses and the incoming trace before concluding that L2 performs worse."
+      },
+      {
+        "question": "A next-line prefetcher is only 50% accurate. Can it lower L2 local miss rate while making execution slower?",
+        "why_it_matters": "It separates a ratio from timeliness, pollution, bandwidth, and energy costs.",
+        "answer_outline": "Yes. Useful prefetches can reduce demand misses, while inaccurate prefetches consume bandwidth and evict useful lines. The rate can improve even if contention raises average latency or stalls."
+      }
+    ],
+    "key_takeaways": [
+      "Always name the denominator: local and global miss rates answer different questions.",
+      "Global L2 miss rate equals L1 miss rate multiplied by local L2 miss rate in a simple serial hierarchy.",
+      "Use global rate for end-to-end cost and AMAT; use local rate as one diagnostic view of a cache level.",
+      "Downstream caches receive a filtered and generally harder request distribution.",
+      "Local rate removes upstream volume but does not remove upstream selection or cross-level coupling.",
+      "Confirm optimization with IPC, latency, MPKI, bandwidth, pollution, and counter semantics—not one percentage."
+    ],
+    "explore_next": [
+      {
+        "topic": "Misses per kilo-instruction",
+        "reason": "MPKI normalizes misses by executed work and complements percentages whose denominators change with hierarchy traffic.",
+        "resource_hint": "cache MPKI versus miss rate"
+      },
+      {
+        "topic": "Reuse distance and stack distance",
+        "reason": "These distributions explain whether misses arise from capacity, access order, or limited locality rather than only reporting the outcome.",
+        "resource_hint": "reuse distance cache analysis"
+      },
+      {
+        "topic": "Prefetch accuracy, coverage, and timeliness",
+        "reason": "The three metrics show why demand miss rate alone cannot evaluate a prefetcher.",
+        "resource_hint": "hardware prefetcher accuracy coverage timeliness pollution"
+      },
+      {
+        "topic": "Inclusive, exclusive, and non-inclusive caches",
+        "reason": "Inclusion policy determines whether replacement at one level creates invalidations and capacity effects elsewhere.",
+        "resource_hint": "inclusive exclusive cache hierarchy tradeoffs"
+      }
+    ]
+  }
+}

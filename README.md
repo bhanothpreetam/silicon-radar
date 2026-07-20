@@ -127,11 +127,15 @@ verify horizontal swipe and native vertical scrolling:
 
 ```bash
 python3 tests/miniapp_vnext_smoke.py
-python3 -m unittest tests/test_deep_dive_v2.py tests/test_content_depth.py
+python3 -m unittest tests/test_deep_dive_v2.py tests/test_content_depth.py tests/test_demo_card.py
 ```
 
 It requires Python Playwright and its Chromium browser. The production Mini App
 has no build step.
+
+For a deployment-safe preview of the full research reader without migrated
+Supabase data, open the preview URL with `?demo=deep`. The fixture is static and
+demo reactions never POST to Supabase.
 
 ## Project map
 

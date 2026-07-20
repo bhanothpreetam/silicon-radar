@@ -100,3 +100,8 @@ The experiment defaults to v1. To activate v2:
 
 The Mini App is backward-compatible. Cards without `deep_dive` retain the legacy
 expanded layout.
+
+Branch previews can append `?demo=deep` to load the static Bits'nBrews-derived
+reference card. Demo mode makes no Supabase reads or feedback writes and exists
+only so the long-form reader can be reviewed before the migration and first v2
+generation run.
