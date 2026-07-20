@@ -122,7 +122,8 @@ html, body {
   flex-direction: column;
   padding: 18px 22px calc(22px + var(--safe-bottom));
   min-height: 0;
-  touch-action: none; /* hand horizontal drag entirely to JS — no browser gesture fight */
+  overflow-y: auto; /* fallback for short viewports where content taller than screen */
+  touch-action: pan-y; /* vertical scroll native; horizontal drag free for JS */
 }
 
 .badge-row {

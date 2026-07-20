@@ -21,7 +21,7 @@ from db.models import (
 
 log = logging.getLogger(__name__)
 
-MINIAPP_URL = "https://silicon-radar-feed.vercel.app"
+MINIAPP_URL = "https://silicon-radar-feed-two.vercel.app"
 
 # Emoji map for tech layers — makes messages scannable on mobile
 LAYER_EMOJI = {
