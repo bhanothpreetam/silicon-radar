@@ -3,9 +3,10 @@ Silicon Radar — Intelligence Card Generator
 Uses Gemini 2.5 Flash to convert raw articles
 into structured "why it matters" intelligence cards.
 
-The observed free-tier daily quota is 20 requests per API key. Multiple keys
-rotate on server-reported daily exhaustion; local counters provide a coarse
-per-process safety ceiling and minute-level pacing.
+The observed free-tier daily quota was 20 requests for each configured quota
+pool. Gemini now documents quota as project-scoped, so rotating keys only adds
+capacity when those keys belong to independent projects. Local counters provide
+a coarse per-process safety ceiling and minute-level pacing.
 """
 
 import difflib

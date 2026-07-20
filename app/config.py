@@ -25,8 +25,8 @@ class Config:
     TELEGRAM_CHAT_ID: str = os.getenv("TELEGRAM_CHAT_ID", "")  # your personal chat ID
 
     # --- Rate limiting ---
-    # The observed Gemini 2.5 Flash free-tier quota is 20 requests/day/key.
-    # Daily per-key exhaustion is server-enforced and handled by key rotation;
+    # The observed Gemini 2.5 Flash free-tier quota was 20 requests/day/project.
+    # Rotation helps only across keys backed by independent quota projects;
     # this counter remains a coarse per-process safety ceiling.
     GEMINI_REQUESTS_PER_MINUTE: int = 12       # stay under 15 RPM limit
     GEMINI_REQUESTS_PER_DAY: int = 1400

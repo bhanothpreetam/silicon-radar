@@ -86,8 +86,9 @@ TWITTER_COOKIES=auth_token=...; ct0=...
 ```
 
 `GEMINI_API_KEY` is supported as a single-key fallback. The observed Gemini 2.5
-Flash free-tier quota is 20 requests per day per key, which is why key rotation
-and quota-conscious source evaluation are core design constraints.
+Flash free-tier quota is project-scoped, so rotation adds capacity only when
+keys belong to independent projects. Quota-conscious source evaluation remains
+a core design constraint.
 
 Install dependencies:
 

@@ -51,8 +51,9 @@ Existing v1 cards continue using the legacy Read more view.
 - Touch and scroll work must be tested with CDP `Input.dispatchTouchEvent`, not
   synthetic DOM touch events.
 - Sparse reactions are normal. Silence is not a negative preference signal.
-- Gemini daily quota is scarce and server-enforced per key; features should not
-  add model calls unless their expected information gain justifies the cost.
+- Gemini daily quota is scarce and server-enforced per project; rotating several
+  keys from one project does not add capacity. Features should not add model
+  calls unless their expected information gain justifies the cost.
 
 ## Candidate next slices
 
