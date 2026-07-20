@@ -187,17 +187,60 @@ function values(value) {
   return Array.isArray(value) ? value.filter(Boolean) : [];
 }
 
+function richInline(text) {
+  return esc(text)
+    .replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/`([^`\n]+)`/g, "<code>$1</code>");
+}
+
 function paragraphs(text) {
   if (!text) return "";
-  return String(text)
-    .split(/\n\s*\n/)
-    .filter(Boolean)
-    .map((paragraph) => `<p>${esc(paragraph.trim())}</p>`)
-    .join("");
+  const output = [];
+  let proseLines = [];
+  let listItems = [];
+  let listType = null;
+
+  function flushProse() {
+    if (!proseLines.length) return;
+    output.push(`<p>${richInline(proseLines.join(" ").trim())}</p>`);
+    proseLines = [];
+  }
+
+  function flushList() {
+    if (!listItems.length) return;
+    const tag = listType === "ordered" ? "ol" : "ul";
+    output.push(`<${tag} class="rich-list">${listItems.map((item) => `<li>${richInline(item)}</li>`).join("")}</${tag}>`);
+    listItems = [];
+    listType = null;
+  }
+
+  String(text).replace(/\r/g, "").split("\n").forEach((rawLine) => {
+    const line = rawLine.trim();
+    if (!line) {
+      flushProse();
+      flushList();
+      return;
+    }
+    const ordered = line.match(/^\d+[.)]\s+(.+)$/);
+    const unordered = line.match(/^[-•]\s+(.+)$/);
+    const nextType = ordered ? "ordered" : unordered ? "unordered" : null;
+    if (nextType) {
+      flushProse();
+      if (listType && listType !== nextType) flushList();
+      listType = nextType;
+      listItems.push((ordered || unordered)[1]);
+      return;
+    }
+    flushList();
+    proseLines.push(line);
+  });
+  flushProse();
+  flushList();
+  return output.join("");
 }
 
 function bulletList(items, className = "deep-list") {
-  const rows = values(items).map((item) => `<li>${esc(item)}</li>`).join("");
+  const rows = values(items).map((item) => `<li>${richInline(item)}</li>`).join("");
   return rows ? `<ul class="${className}">${rows}</ul>` : "";
 }
 

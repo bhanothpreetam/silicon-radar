@@ -813,6 +813,32 @@ html, body {
   line-height: 1.78;
 }
 
+.guided-article strong {
+  color: #faf9f6;
+  font-weight: 700;
+}
+
+.guided-article code {
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: rgba(255,255,255,0.07);
+  color: #d8ccff;
+  font: 0.88em/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.rich-list {
+  margin: 12px 0 18px;
+  padding-left: 24px;
+}
+
+.rich-list li {
+  margin-bottom: 10px;
+  padding-left: 3px;
+  color: var(--book-text, #dcdce2);
+  font-size: 15px;
+  line-height: 1.65;
+}
+
 .guided-hero {
   padding: 5px 0 29px;
   border-bottom: 1px solid var(--border);

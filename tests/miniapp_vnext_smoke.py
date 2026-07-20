@@ -381,6 +381,10 @@ def run():
         assert first_reveal.get_attribute("open") is not None
         assert page.locator(".card.expanded .transfer-problem").count() >= 2
         assert page.locator(".card.expanded .frontier-proposal").count() >= 1
+        first_solution = page.locator(".card.expanded .transfer-solution").first
+        first_solution.locator("summary").click()
+        assert first_solution.locator("strong").count() >= 1
+        assert "**" not in first_solution.inner_text()
         if actual_screenshot_path := os.getenv("ACTUAL_PREVIEW_SCREENSHOT"):
             page.screenshot(path=actual_screenshot_path, full_page=False)
 

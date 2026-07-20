@@ -27,6 +27,7 @@ jobs:
         run: python scripts/run_pipeline.py quick
         env:
           GEMINI_API_KEYS: ${{ secrets.GEMINI_API_KEYS }}
+          INTELLIGENCE_PROMPT_VERSION: v2
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
