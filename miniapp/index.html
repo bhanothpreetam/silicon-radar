@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>Silicon Radar</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<div id="app">
+
+  <header id="header">
+    <div class="wordmark">📡 <span>Silicon Radar</span></div>
+    <div id="counter" class="counter">–</div>
+  </header>
+
+  <div id="progress-track"><div id="progress-fill"></div></div>
+
+  <main id="stack" role="region" aria-label="Card feed"></main>
+
+  <div id="empty-state" class="empty-state hidden">
+    <div class="empty-icon">📭</div>
+    <div class="empty-title">No signals yet</div>
+    <div class="empty-sub">Check back after the next pipeline run.</div>
+  </div>
+
+  <div id="loading" class="loading">
+    <div class="spinner"></div>
+  </div>
+
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

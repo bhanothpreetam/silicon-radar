@@ -9,7 +9,7 @@ import logging
 import asyncio
 from datetime import datetime
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot, WebAppInfo
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 from telegram.constants import ParseMode
 
@@ -20,6 +20,8 @@ from db.models import (
 )
 
 log = logging.getLogger(__name__)
+
+MINIAPP_URL = "https://silicon-radar-feed.vercel.app"
 
 # Emoji map for tech layers — makes messages scannable on mobile
 LAYER_EMOJI = {
@@ -110,6 +112,9 @@ def make_feedback_keyboard(card_id: int) -> InlineKeyboardMarkup:
         [
             InlineKeyboardButton("🕳️ Rabbit hole", callback_data=f"fb:rabbit_hole:{card_id}"),
             InlineKeyboardButton("🗑️ Noise", callback_data=f"fb:trash:{card_id}"),
+        ],
+        [
+            InlineKeyboardButton("📱 Open in Feed", web_app=WebAppInfo(url=MINIAPP_URL)),
         ],
     ])
 
@@ -398,9 +403,20 @@ async def cmd_health(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(text)
 
 
+async def cmd_feed(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton("📱 Open Silicon Radar", web_app=WebAppInfo(url=MINIAPP_URL)),
+    ]])
+    await update.message.reply_text(
+        "Swipeable card feed — tap to open.",
+        reply_markup=keyboard,
+    )
+
+
 async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "<b>Silicon Radar Commands</b>\n\n"
+        "/feed — Open the swipeable card feed\n"
         "/digest — Today's top signals\n"
         "/quiz — Test your knowledge\n"
         "/answer — Reveal quiz answer\n"
@@ -504,6 +520,7 @@ def run_bot():
     """Start the bot for interactive /commands. Run this once, keep it alive."""
     app = Application.builder().token(config.TELEGRAM_TOKEN).build()
 
+    app.add_handler(CommandHandler("feed", cmd_feed))
     app.add_handler(CommandHandler("digest", cmd_digest))
     app.add_handler(CommandHandler("quiz", cmd_quiz))
     app.add_handler(CommandHandler("answer", cmd_answer))
