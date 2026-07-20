@@ -27,7 +27,7 @@ VIDEO URL:
 Respond ONLY with a valid JSON object. No markdown, no preamble, no explanation outside the JSON.
 
 {{
-  "one_line_summary": "📚 Concept: {concept} — one crisp sentence on what this concept is.",
+  "one_line_summary": "📚 Concept: {concept} — one crisp sentence, under 100 characters, on what this concept is.",
 
   "what_happened": "2-3 sentences: what this video teaches and who teaches it (lecturer/channel if identifiable from transcript).",
 

@@ -31,7 +31,7 @@ SOURCE TYPE:
 Respond ONLY with a valid JSON object. No markdown, no preamble, no explanation outside the JSON.
 
 {{
-  "one_line_summary": "One crisp sentence. What happened.",
+  "one_line_summary": "One crisp sentence, under 110 characters. What happened — no sub-clauses, no semicolons, no piling on every detail. Save the nuance for what_happened.",
 
   "what_happened": "2-3 sentences. The factual event. Who did what.",
 

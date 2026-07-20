@@ -361,22 +361,21 @@ function attachDelegatedEvents() {
 // ---------------------------------------------------------------------------
 
 function fitCardBrief(cardEl) {
+  const face = cardEl.querySelector(".card-face");
   const brief = cardEl.querySelector(".card-brief");
-  const title = cardEl.querySelector(".card-title");
-  const footer = cardEl.querySelector(".card-footer");
-  if (!brief || !footer) return;
+  if (!face || !brief) return;
 
-  // Reset to the max so we measure against brief's natural (unclamped-by-us) box
-  brief.style.setProperty("-webkit-line-clamp", "6");
-
-  const titleBottom = (title || brief).getBoundingClientRect().bottom;
-  const footerTop = footer.getBoundingClientRect().top;
-  const available = footerTop - titleBottom;
-
-  const lineHeight = parseFloat(getComputedStyle(brief).lineHeight) || 26;
-  let maxLines = Math.floor(available / lineHeight);
-  maxLines = Math.max(2, Math.min(6, maxLines));
-  brief.style.setProperty("-webkit-line-clamp", String(maxLines));
+  // Verify against REAL measured overflow (face.scrollHeight vs clientHeight)
+  // instead of estimating from line-height -- estimation broke on devices
+  // where computed line-height/font-scaling didn't match assumptions.
+  // .card-title has its own hard CSS cap (3 lines), so it can no longer be
+  // the unbounded culprit; this loop only has to handle .card-brief now.
+  for (let lines = 6; lines >= 1; lines--) {
+    brief.style.setProperty("-webkit-line-clamp", String(lines));
+    if (face.scrollHeight <= face.clientHeight + 1) return; // +1: rounding slack
+  }
+  // Even 1 line doesn't fit (extreme case: many wrapped badges + long title) --
+  // touch-action:pan-y + overflow-y:auto on .card-face remains the fallback.
 }
 
 function fitAllCards() {

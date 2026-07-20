@@ -157,6 +157,12 @@ html, body {
   letter-spacing: -0.02em;
   margin: 0 0 14px;
   flex-shrink: 0;
+  /* Hard cap — titles occasionally run 200+ chars despite the prompt asking
+     for one crisp sentence. Full text is always available via "Read more". */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
 }
 
 .card-brief {
