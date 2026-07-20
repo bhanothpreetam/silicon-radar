@@ -201,9 +201,167 @@ function bulletList(items, className = "deep-list") {
   return rows ? `<ul class="${className}">${rows}</ul>` : "";
 }
 
+function renderGuidedArticle(card, deep) {
+  const assessment = deep.source_assessment || {};
+  const opening = deep.opening || {};
+  const synthesis = deep.synthesis || {};
+  const retention = deep.retention || {};
+  const chapters = values(deep.chapters);
+  const articleType = String(deep.article_type || "analysis").replace(/_/g, " ");
+  const readingTime = Number(deep.reading_time_minutes) || null;
+
+  const chapterNav = chapters
+    .map((chapter, index) => {
+      const number = chapter.number || index + 1;
+      return `<button type="button" data-scroll-target="guided-${card.id}-${index}">${esc(number)}</button>`;
+    })
+    .join("");
+
+  const chapterHtml = chapters
+    .map((chapter, index) => {
+      const reveal = chapter.reveal || {};
+      const example = reveal.worked_example || {};
+      const checkpoint = chapter.checkpoint || {};
+      const number = chapter.number || index + 1;
+      const derivation = bulletList(example.derivation, "guided-derivation");
+      const worked = example.setup || derivation || example.result
+        ? `<div class="guided-worked">
+            <div class="guided-margin-label">Work it through</div>
+            ${paragraphs(example.setup)}
+            ${derivation}
+            ${example.result ? `<div class="guided-result">${paragraphs(example.result)}</div>` : ""}
+          </div>`
+        : "";
+      const callback = checkpoint.prompt
+        ? `<details class="guided-checkpoint">
+            <summary><span>Retrieve</span>${esc(checkpoint.prompt)}</summary>
+            <div>${paragraphs(checkpoint.answer)}</div>
+          </details>`
+        : "";
+
+      return `<section class="guided-chapter" id="guided-${card.id}-${index}" data-deep-section="guided-${card.id}-${index}">
+        <div class="guided-chapter-number">Chapter ${esc(number)}</div>
+        <h3>${esc(chapter.title || `Chapter ${number}`)}</h3>
+        <div class="guided-setup">${paragraphs(chapter.setup)}</div>
+        <div class="guided-question">
+          <div class="guided-margin-label">Stop and predict</div>
+          <p>${esc(chapter.question)}</p>
+          ${chapter.thinking_cue ? `<div class="guided-cue">Before continuing: ${esc(chapter.thinking_cue)}</div>` : ""}
+        </div>
+        <details class="guided-reveal">
+          <summary><span>Commit to an answer</span><b>Reveal the reasoning</b></summary>
+          <div class="guided-reveal-body">
+            <p class="guided-answer">${esc(reveal.answer)}</p>
+            <div class="guided-reasoning">${paragraphs(reveal.reasoning)}</div>
+            ${reveal.wrong_turn ? `<aside class="guided-wrong"><b>The tempting wrong turn</b>${paragraphs(reveal.wrong_turn)}</aside>` : ""}
+            ${worked}
+            ${callback}
+            ${chapter.bridge ? `<p class="guided-bridge">${esc(chapter.bridge)}</p>` : ""}
+          </div>
+        </details>
+      </section>`;
+    })
+    .join("");
+
+  const triggerConditions = bulletList(synthesis.trigger_conditions, "guided-trigger-list");
+  const decisionProcedure = values(synthesis.decision_procedure)
+    .map((step, index) => `<li><span>${index + 1}</span>${esc(step)}</li>`)
+    .join("");
+  const synthesisHtml = synthesis.resolved_question || synthesis.mental_model || triggerConditions || decisionProcedure
+    ? `<section class="guided-ending" data-deep-section="guided-${card.id}-synthesis">
+        <div class="guided-chapter-number">Synthesis</div>
+        <h3>What you should now be able to reconstruct</h3>
+        ${synthesis.resolved_question ? `<p class="guided-resolution">${esc(synthesis.resolved_question)}</p>` : ""}
+        ${paragraphs(synthesis.mental_model)}
+        ${triggerConditions ? `<h4>When this idea should come to mind</h4>${triggerConditions}` : ""}
+        ${decisionProcedure ? `<h4>A decision procedure</h4><ol class="guided-procedure">${decisionProcedure}</ol>` : ""}
+        ${synthesis.misleading_signal ? `<aside class="guided-wrong"><b>Do not trust this alone</b>${paragraphs(synthesis.misleading_signal)}</aside>` : ""}
+      </section>`
+    : "";
+
+  const labs = values(deep.transfer_lab)
+    .map((lab, index) => {
+      const solution = lab.solution || {};
+      return `<article class="transfer-problem">
+        <div class="transfer-number">${String(index + 1).padStart(2, "0")}</div>
+        <h4>${esc(lab.title || "Design problem")}</h4>
+        <div class="transfer-scenario">${paragraphs(lab.scenario)}</div>
+        <p class="transfer-task">${esc(lab.task)}</p>
+        ${bulletList(lab.constraints, "transfer-constraints")}
+        <details class="transfer-solution">
+          <summary>Open the design review</summary>
+          <div>
+            ${paragraphs(solution.reasoning)}
+            ${solution.tempting_wrong_path ? `<p><b>Tempting wrong path:</b> ${esc(solution.tempting_wrong_path)}</p>` : ""}
+            ${solution.answer_changes_if ? `<p><b>Revisit the answer if:</b> ${esc(solution.answer_changes_if)}</p>` : ""}
+          </div>
+        </details>
+      </article>`;
+    })
+    .join("");
+
+  const frontiers = values(deep.research_frontiers)
+    .map((frontier, index) => `<article class="frontier-proposal">
+      <div class="transfer-number">R${index + 1}</div>
+      <h4>${esc(frontier.question)}</h4>
+      ${paragraphs(frontier.why_unresolved)}
+      <dl>
+        <div><dt>Investigation</dt><dd>${esc(frontier.investigation)}</dd></div>
+        <div><dt>Success means</dt><dd>${esc(frontier.success_metric)}</dd></div>
+        <div><dt>Hardest confounder</dt><dd>${esc(frontier.hardest_confounder)}</dd></div>
+      </dl>
+      ${values(frontier.relevant_work).length ? `<div class="frontier-work">Start from: ${values(frontier.relevant_work).map(esc).join(" · ")}</div>` : ""}
+    </article>`)
+    .join("");
+
+  const reconstruction = bulletList(retention.one_minute_reconstruction, "reconstruction-list");
+  const retentionHtml = reconstruction || retention.tomorrow_question
+    ? `<section class="retention-section">
+        <div class="guided-chapter-number">Close the article</div>
+        <h3>Rebuild it without looking back</h3>
+        ${reconstruction}
+        ${retention.tomorrow_question ? `<details class="tomorrow-question">
+          <summary><span>Ask yourself tomorrow</span>${esc(retention.tomorrow_question)}</summary>
+          <div>${paragraphs(retention.answer)}</div>
+        </details>` : ""}
+      </section>`
+    : "";
+
+  const explore = values(deep.explore_next)
+    .map((item) => `<li><b>${esc(item.topic)}</b><span>${esc(item.reason)}</span>${item.resource_hint ? `<small>${esc(item.resource_hint)}</small>` : ""}</li>`)
+    .join("");
+
+  return `<article class="guided-article">
+    <header class="guided-hero">
+      <div class="guided-overline">${esc(articleType)}${readingTime ? ` · ${readingTime} minute study` : ""}</div>
+      <h2>${esc(deep.title || card.one_line_summary || "Deep dive")}</h2>
+      ${deep.subtitle ? `<p class="guided-deck">${esc(deep.subtitle)}</p>` : ""}
+      <div class="guided-byline">Silicon Radar analysis · ${esc(assessment.confidence || "calibrated")} confidence</div>
+    </header>
+    <section class="guided-opening">
+      ${paragraphs(opening.scene)}
+      ${opening.central_question ? `<h3>${esc(opening.central_question)}</h3>` : ""}
+      ${opening.initial_prompt ? `<div class="opening-prompt"><span>Your first prediction</span><p>${esc(opening.initial_prompt)}</p></div>` : ""}
+      ${opening.stakes ? `<p class="guided-stakes">${esc(opening.stakes)}</p>` : ""}
+      ${assessment.limitations ? `<details class="source-boundary"><summary>What the source can—and cannot—establish</summary>${paragraphs(assessment.limitations)}</details>` : ""}
+    </section>
+    ${chapterNav ? `<nav class="guided-nav" aria-label="Article chapters"><span>Read</span>${chapterNav}<button type="button" data-scroll-target="guided-${card.id}-synthesis">S</button></nav>` : ""}
+    ${chapterHtml}
+    ${synthesisHtml}
+    ${labs ? `<section class="transfer-lab"><div class="guided-chapter-number">Transfer lab</div><h3>Now change the problem</h3><p class="section-intro">These are design reviews, not recall questions. State your assumptions before opening the solution.</p>${labs}</section>` : ""}
+    ${frontiers ? `<section class="frontiers-section"><div class="guided-chapter-number">Research frontier</div><h3>Questions that deserve an experiment</h3>${frontiers}</section>` : ""}
+    ${retentionHtml}
+    ${explore ? `<section class="guided-explore"><h3>Continue the thread</h3><ul>${explore}</ul></section>` : ""}
+  </article>`;
+}
+
 function renderDeepDive(card) {
   const deep = card.deep_dive;
-  if (!deep || typeof deep !== "object" || !deep.thesis) return "";
+  if (!deep || typeof deep !== "object") return "";
+  if (deep.format === "guided_article_v1" && values(deep.chapters).length) {
+    return renderGuidedArticle(card, deep);
+  }
+  if (!deep.thesis) return "";
 
   const blocks = [];
   const toc = [];

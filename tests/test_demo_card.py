@@ -16,15 +16,16 @@ class DemoCardTests(unittest.TestCase):
 
     def test_compact_contract(self):
         self.assertLessEqual(len(self.card["one_line_summary"]), 110)
-        self.assertEqual(self.card["prompt_version"], "v2")
+        self.assertEqual(self.card["prompt_version"], "v2-preview")
         self.assertTrue(self.card["notify"])
 
-    def test_reference_exercises_research_reader(self):
-        self.assertGreaterEqual(len(self.deep["sections"]), 5)
-        self.assertGreaterEqual(len(self.deep["prerequisites"]), 3)
-        self.assertGreaterEqual(len(self.deep["tradeoffs"]), 3)
-        self.assertGreaterEqual(len(self.deep["whiteboard_challenges"]), 3)
-        self.assertGreaterEqual(len(self.deep["key_takeaways"]), 5)
+    def test_reference_exercises_guided_reader(self):
+        self.assertEqual(self.deep["format"], "guided_article_v1")
+        self.assertGreaterEqual(len(self.deep["chapters"]), 4)
+        self.assertTrue(self.deep["opening"]["initial_prompt"])
+        self.assertGreaterEqual(len(self.deep["transfer_lab"]), 2)
+        self.assertTrue(self.deep["research_frontiers"])
+        self.assertTrue(self.deep["retention"]["tomorrow_question"])
 
 
 if __name__ == "__main__":

@@ -231,7 +231,7 @@ def generate_intelligence_card(
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     temperature=0.2,
-                    max_output_tokens=8192,
+                    max_output_tokens=16384 if PROMPT_VERSION == "v2" else 8192,
                     response_mime_type="application/json",
                     thinking_config=types.ThinkingConfig(thinking_budget=0),
                 ),

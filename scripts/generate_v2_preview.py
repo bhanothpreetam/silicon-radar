@@ -35,6 +35,10 @@ def parse_args():
     action.add_argument("--list", action="store_true", help="List recent eligible items without Gemini calls")
     action.add_argument("--show", help="Show source metadata and excerpts for comma-separated raw_item IDs")
     action.add_argument("--ids", help="Comma-separated raw_item IDs to generate (maximum 3)")
+    action.add_argument("--local-file", type=Path, help="Generate one preview from an explicitly supplied local source")
+    parser.add_argument("--local-url", default="", help="Canonical URL for --local-file")
+    parser.add_argument("--local-title", default="Local technical source", help="Title for --local-file")
+    parser.add_argument("--local-source", default="Reader-supplied source", help="Source label for --local-file")
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     return parser.parse_args()
 
@@ -106,9 +110,16 @@ def validate_card(card):
     if len(card["one_line_summary"]) > SUMMARY_CHAR_LIMIT:
         raise ValueError("one_line_summary exceeds the compact-card limit after normalization")
     deep = card["deep_dive"]
-    for key in ("thesis", "sections", "prerequisites", "tradeoffs", "key_takeaways"):
+    for key in ("format", "opening", "chapters", "synthesis", "transfer_lab", "retention"):
         if not deep.get(key):
             raise ValueError(f"v2 deep_dive missing {key}")
+    if deep["format"] != "guided_article_v1":
+        raise ValueError("v2 deep_dive uses an unsupported article format")
+    if len(deep["chapters"]) < 4:
+        raise ValueError("guided article needs at least four chapters")
+    for index, chapter in enumerate(deep["chapters"], 1):
+        if not chapter.get("question") or not chapter.get("reveal", {}).get("reasoning"):
+            raise ValueError(f"guided article chapter {index} lacks a question/reveal pair")
 
 
 def clamp_summary(text, limit=SUMMARY_CHAR_LIMIT):
@@ -140,7 +151,7 @@ def generate_card(item, template, keys):
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     temperature=0.2,
-                    max_output_tokens=8192,
+                    max_output_tokens=16384,
                     response_mime_type="application/json",
                     thinking_config=types.ThinkingConfig(thinking_budget=0),
                 ),
@@ -188,6 +199,36 @@ def generate_card(item, template, keys):
 def main():
     args = parse_args()
     configure(args.env_file)
+
+    if args.local_file:
+        if not args.local_file.is_file():
+            raise SystemExit(f"Local source not found: {args.local_file}")
+        local_text = args.local_file.read_text()
+        if len(local_text) < MIN_SOURCE_CHARS:
+            raise SystemExit(f"Local source must contain at least {MIN_SOURCE_CHARS} characters")
+        from app.config import config
+        if not config.GEMINI_API_KEYS:
+            raise SystemExit("No Gemini keys configured")
+        template = (ROOT / "prompts" / "intelligence_card_v2.txt").read_text()
+        item = {
+            "id": 999_001,
+            "title": args.local_title,
+            "url": args.local_url,
+            "raw_text": local_text,
+            "source": {
+                "name": args.local_source,
+                "type": "rss",
+                "credibility": 7,
+                "status": "trusted",
+            },
+        }
+        card = generate_card(item, template, config.GEMINI_API_KEYS)
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(json.dumps(card, indent=2, ensure_ascii=False) + "\n")
+        print(f"Wrote local preview card to {args.output}")
+        print("No Supabase rows or Telegram messages were written.")
+        return
+
     candidates = fetch_candidates()
 
     if args.list:

@@ -45,6 +45,10 @@ class DeepDiveV2Tests(unittest.TestCase):
         )
         self.assertIn("A cache metric article", rendered)
         self.assertIn('"deep_dive": {', rendered)
+        self.assertIn('"format": "guided_article_v1"', rendered)
+        self.assertIn('"chapters": [', rendered)
+        self.assertIn("2. COMMIT", rendered)
+        self.assertIn("TRANSFER-PROBLEM STANDARD", rendered)
         self.assertNotIn("{raw_text}", rendered)
 
     def test_v2_payload_persists_prompt_version_and_deep_dive(self):

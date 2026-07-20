@@ -29,13 +29,14 @@ additional API calls, and does not change collection, scoring, notification, or
 probation behavior. Card age is also visible beside the source so users can
 distinguish a new signal from backlog at a glance.
 
-## Second experimental slice: research deep dives
+## Second experimental slice: guided technical articles
 
-Prompt v2 generates a compact card and a structured long-form research brief in
-the same Gemini request. The expanded Mini App view renders evidence,
-prerequisites, causal narrative sections, worked reasoning, cross-layer
-connections, tradeoffs, historical context, industry positioning, research
-frontiers, misconceptions, and whiteboard challenges.
+Prompt v2 generates a compact card and a guided long-form article in the same
+Gemini request. The expanded view follows a predict → commit → reveal → apply →
+retrieve rhythm. Prerequisites, evidence, history, cross-layer effects, and
+tradeoffs appear inside the causal narrative when they become necessary rather
+than as independent AI-looking buckets. End problems test transfer, and each
+research frontier names an experiment, success metric, and confounder.
 
 The experiment is opt-in through `INTELLIGENCE_PROMPT_VERSION=v2` and requires
 the small JSONB migration documented in [DEEP_DIVE_V2.md](DEEP_DIVE_V2.md).

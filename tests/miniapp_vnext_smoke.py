@@ -354,11 +354,18 @@ def run():
         )
         page.goto(f"{base_url}/?demo=deep", wait_until="networkidle")
         assert page.locator(".card").count() == 1
-        assert "Local cache miss rates" in page.locator(".card-title").inner_text()
+        assert "cache miss rates" in page.locator(".card-title").inner_text().lower()
         page.locator(".more-btn").click()
-        assert "Local vs Global" in page.locator(".deep-hero h2").inner_text()
-        assert page.locator(".narrative-section").count() >= 5
-        assert page.locator(".challenge-card").count() == 3
+        assert "Cache Miss Rates" in page.locator(".guided-hero h2").inner_text()
+        assert page.locator(".guided-chapter").count() >= 4
+        assert page.locator(".transfer-problem").count() >= 2
+        assert page.locator(".frontier-proposal").count() >= 1
+        demo_reveal = page.locator(".guided-reveal").first
+        assert not demo_reveal.get_attribute("open")
+        demo_reveal.locator("summary").click()
+        assert demo_reveal.get_attribute("open") is not None
+        if demo_screenshot_path := os.getenv("DEMO_PREVIEW_SCREENSHOT"):
+            page.screenshot(path=demo_screenshot_path, full_page=False)
         page.locator('.fb-btn[data-reaction="brain"]').last.click()
         page.wait_for_timeout(100)
         assert demo_posts == []
@@ -366,8 +373,14 @@ def run():
         page.goto(f"{base_url}/?demo=actual", wait_until="networkidle")
         assert page.locator(".card").count() == 2
         page.locator(".more-btn").first.click()
-        assert page.locator(".deep-dive").count() == 2
-        assert page.locator(".card.expanded .narrative-section").count() >= 4
+        assert page.locator(".guided-article").count() == 2
+        assert page.locator(".card.expanded .guided-chapter").count() >= 4
+        first_reveal = page.locator(".card.expanded .guided-reveal").first
+        assert not first_reveal.get_attribute("open")
+        first_reveal.locator("summary").click()
+        assert first_reveal.get_attribute("open") is not None
+        assert page.locator(".card.expanded .transfer-problem").count() >= 2
+        assert page.locator(".card.expanded .frontier-proposal").count() >= 1
         if actual_screenshot_path := os.getenv("ACTUAL_PREVIEW_SCREENSHOT"):
             page.screenshot(path=actual_screenshot_path, full_page=False)
 
