@@ -84,6 +84,7 @@ function openUrl(url) {
 async function sb(path) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+    cache: "no-store",
   });
   if (!res.ok) throw new Error(`Supabase ${path} -> ${res.status}`);
   return res.json();
@@ -698,6 +699,13 @@ let dragStartX = 0;
 let dragging = false;
 let activeLens = "all";
 let trackEl, counterEl, progressEl, stackEl, emptyEl, lensBarEl;
+let lastLoadedAt = 0;
+let refreshInFlight = null;
+let refreshDeferred = false;
+let refreshNoticeTimer = null;
+
+const REFRESH_INTERVAL_MS = 60_000;
+const REFRESH_STALE_MS = 15_000;
 
 function goTo(newIndex, withHaptic = true) {
   if (!cards.length) return;
@@ -725,6 +733,80 @@ function collapseCard() {
   document.getElementById("app").classList.remove("detail-open");
   document.querySelectorAll(".card").forEach((c) => c.classList.remove("expanded"));
   haptic("light");
+  if (refreshDeferred) {
+    refreshDeferred = false;
+    window.setTimeout(() => refreshCards("detail-closed"), 0);
+  }
+}
+
+function showRefreshNotice(newCount) {
+  if (newCount < 1) return;
+  let notice = document.getElementById("refresh-notice");
+  if (!notice) {
+    notice = document.createElement("div");
+    notice.id = "refresh-notice";
+    notice.className = "refresh-notice";
+    document.getElementById("app").appendChild(notice);
+  }
+  notice.textContent = `${newCount} new card${newCount === 1 ? "" : "s"} · swipe right`;
+  notice.classList.add("show");
+  window.clearTimeout(refreshNoticeTimer);
+  refreshNoticeTimer = window.setTimeout(() => notice.classList.remove("show"), 3200);
+}
+
+async function refreshCards(reason = "manual") {
+  if (DEMO_MODE === "deep" || DEMO_MODE === "actual" || document.hidden) return;
+  if (expandedId !== null) {
+    refreshDeferred = true;
+    return;
+  }
+  if (refreshInFlight) return refreshInFlight;
+
+  const preferredCardId = cards[index] ? cards[index].id : null;
+  const previousIds = new Set(allCards.map((card) => card.id));
+
+  refreshInFlight = (async () => {
+    try {
+      const freshCards = await loadCards();
+      lastLoadedAt = Date.now();
+      const oldSignature = allCards.map((card) => card.id).join(",");
+      const newSignature = freshCards.map((card) => card.id).join(",");
+      if (oldSignature === newSignature) return;
+
+      const newCount = freshCards.filter((card) => !previousIds.has(card.id)).length;
+      allCards = freshCards;
+      updateLensCounts();
+      renderFeed(preferredCardId);
+      showRefreshNotice(newCount);
+      console.info(`Feed refreshed (${reason}): ${newCount} new card(s)`);
+    } catch (error) {
+      console.warn(`Feed refresh failed (${reason})`, error);
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+
+  return refreshInFlight;
+}
+
+function attachRefreshLifecycle() {
+  if (DEMO_MODE === "deep" || DEMO_MODE === "actual") return;
+
+  const refreshIfStale = (reason) => {
+    if (Date.now() - lastLoadedAt >= REFRESH_STALE_MS) refreshCards(reason);
+  };
+
+  window.addEventListener("pageshow", (event) => {
+    if (event.persisted) refreshCards("history-restore");
+    else refreshIfStale("pageshow");
+  });
+  window.addEventListener("focus", () => refreshIfStale("focus"));
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) refreshIfStale("visible");
+  });
+  window.setInterval(() => {
+    if (!document.hidden) refreshCards("interval");
+  }, REFRESH_INTERVAL_MS);
 }
 
 function updateLensCounts() {
@@ -933,6 +1015,7 @@ async function boot() {
 
   try {
     allCards = await loadCards();
+    lastLoadedAt = Date.now();
   } catch (e) {
     console.error(e);
     document.getElementById("loading").classList.add("hidden");
@@ -947,6 +1030,7 @@ async function boot() {
   attachDrag();
   attachDelegatedEvents();
   attachLensEvents();
+  attachRefreshLifecycle();
   updateLensCounts();
   renderFeed();
 

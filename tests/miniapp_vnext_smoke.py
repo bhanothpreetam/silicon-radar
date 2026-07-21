@@ -355,6 +355,41 @@ def run():
         )
         assert scroll_state["briefTop"] > 0, scroll_state
 
+        # A history/BFCache restore refreshes stale data. If the reader is in a
+        # deep dive, defer the rerender until it closes; then preserve that card
+        # while prepending the newly generated card.
+        page.locator(".more-btn").first.click()
+        assert page.locator(".card.expanded").count() == 1
+        new_card = {
+            **CARDS[1],
+            "id": 105,
+            "raw_item_id": 5,
+            "one_line_summary": "A newly generated card arrives while the reader is studying",
+            "generated_at": "2026-07-21T09:00:00Z",
+        }
+        CARDS.insert(0, new_card)
+        ITEMS.append({
+            "id": 5,
+            "title": "New architecture signal",
+            "url": "https://example.com/new-signal",
+            "source_id": 12,
+        })
+        page.evaluate(
+            "window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }))"
+        )
+        page.wait_for_timeout(150)
+        assert page.locator(".card").count() == 4
+        assert page.locator(".card.expanded").count() == 1
+        page.locator(".close-btn").first.click()
+        page.wait_for_function("document.querySelectorAll('.card').length === 5")
+        assert page.locator("#counter").inner_text() == "2 / 5"
+        assert page.locator("#refresh-notice").inner_text() == "1 new card · swipe right"
+        assert page.locator("#refresh-notice").evaluate("el => el.classList.contains('show')")
+        page.keyboard.press("ArrowLeft")
+        page.wait_for_timeout(400)
+        assert page.locator("#counter").inner_text() == "1 / 5"
+        assert "newly generated" in page.locator(".card-title").first.inner_text().lower()
+
         # The deployable preview fixture must exercise the full reader without
         # touching Supabase or posting demo reactions into production data.
         demo_posts = []
