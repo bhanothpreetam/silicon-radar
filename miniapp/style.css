@@ -221,6 +221,7 @@ html, body {
   flex: 1;
   min-height: 56px; /* stays usable even when the title above is long */
   overflow-y: auto; /* its own scroll region — title and footer never move */
+  touch-action: pan-y; /* nearest scroll container: vertical scroll native, horizontal reserved for card swipe */
   -webkit-overflow-scrolling: touch;
   padding-bottom: 4px;
 }

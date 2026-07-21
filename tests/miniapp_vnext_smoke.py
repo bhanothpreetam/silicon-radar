@@ -306,12 +306,23 @@ def run():
         page.locator(".close-btn").first.click()
         assert page.locator("#header").is_visible()
 
-        # Real touch: a horizontal gesture must advance the feed.
+        # Real touch: a horizontal gesture that begins inside the independently
+        # scrollable description must still advance the feed. The brief is the
+        # nearest scroll container, so the touch-action contract must live there.
         cdp = context.new_cdp_session(page)
-        touch(cdp, "touchStart", 320, 420)
-        touch(cdp, "touchMove", 210, 422)
-        touch(cdp, "touchMove", 90, 424)
-        touch(cdp, "touchEnd", 90, 424)
+        brief = page.locator(".card-brief").first
+        brief_box = brief.bounding_box()
+        assert brief_box
+        swipe_y = int(brief_box["y"] + brief_box["height"] / 2)
+        swipe_start_x = int(brief_box["x"] + brief_box["width"] - 25)
+        assert page.evaluate(
+            "([x, y]) => document.elementFromPoint(x, y).closest('.card-brief') !== null",
+            [swipe_start_x, swipe_y],
+        )
+        touch(cdp, "touchStart", swipe_start_x, swipe_y)
+        touch(cdp, "touchMove", swipe_start_x - 110, swipe_y + 2)
+        touch(cdp, "touchMove", swipe_start_x - 230, swipe_y + 4)
+        touch(cdp, "touchEnd", swipe_start_x - 230, swipe_y + 4)
         page.wait_for_timeout(500)
         assert page.locator("#counter").inner_text() == "2 / 4"
 
