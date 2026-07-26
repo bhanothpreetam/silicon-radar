@@ -162,7 +162,12 @@ _day_start = time.time()
 
 
 def _get_client(api_key: str) -> genai.Client:
-    return genai.Client(api_key=api_key)
+    # Leave enough room for a rich v2 response, but never let one model call
+    # consume the remainder of GitHub's 15-minute workflow window.
+    return genai.Client(
+        api_key=api_key,
+        http_options=types.HttpOptions(timeout=120_000),
+    )
 
 
 def _rate_limit() -> bool:
@@ -307,7 +312,11 @@ def generate_intelligence_card(
     return None
 
 
-def process_unprocessed_items(max_items: int = 50) -> int:
+def process_unprocessed_items(
+    max_items: int = 50,
+    max_cards: int | None = None,
+    time_budget_seconds: float | None = None,
+) -> int:
     """
     Main loop: pull unprocessed items, generate cards, store them.
     Runs keyword pre-filter and deduplication before any Gemini call.
@@ -324,8 +333,25 @@ def process_unprocessed_items(max_items: int = 50) -> int:
     generated = 0
     filtered = 0
     duped = 0
+    processing_started = time.monotonic()
 
     for item in items:
+        if max_cards is not None and generated >= max_cards:
+            log.info(
+                f"Quick-run card cap reached ({max_cards}); "
+                "reserving time for notifications."
+            )
+            break
+        if (
+            time_budget_seconds is not None
+            and time.monotonic() - processing_started >= time_budget_seconds
+        ):
+            log.warning(
+                f"Processing time budget reached ({time_budget_seconds:.0f}s); "
+                "reserving time for notifications."
+            )
+            break
+
         title = item["title"]
         url = item["url"]
 

@@ -126,11 +126,18 @@ def run_collect():
         return 0
 
 
-def run_process():
+def run_process(
+    max_cards: int | None = None,
+    time_budget_seconds: float | None = None,
+):
     try:
         log.info("=== PHASE 2: Generating intelligence cards ===")
         from processing.card_generator import process_unprocessed_items
-        n = process_unprocessed_items(max_items=50)
+        n = process_unprocessed_items(
+            max_items=50,
+            max_cards=max_cards,
+            time_budget_seconds=time_budget_seconds,
+        )
         log.info(f"Generated {n} intelligence cards.")
         return n
     except Exception as e:
@@ -308,7 +315,10 @@ if __name__ == "__main__":
         collected = run_quick()
         cards = 0
         if collected > 0:
-            cards = run_process()
+            # v2 deep dives take roughly a minute each in production. Bound
+            # quick runs so notification delivery cannot be starved by a
+            # healthy backlog or by slow model responses.
+            cards = run_process(max_cards=4, time_budget_seconds=360)
         run_notify()
         run_probation_eval()
         if cards > 0:

@@ -115,3 +115,43 @@ def test_youtube_cloud_block_falls_back_to_rss_metadata(monkeypatch):
     assert len(inserted) == 1
     assert youtube.METADATA_ONLY_MARKER in inserted[0]["raw_text"]
     assert "cache coherence" in inserted[0]["raw_text"]
+
+
+def test_quick_processing_stops_at_card_cap(monkeypatch):
+    import processing.card_generator as generator
+
+    items = [
+        {
+            "id": item_id,
+            "title": f"AMD architecture update {item_id}",
+            "url": f"https://example{item_id}.com/story",
+            "raw_text": "Technical source text",
+            "source_type": "rss",
+            "credibility": 8,
+        }
+        for item_id in range(1, 5)
+    ]
+    generated_for = []
+
+    monkeypatch.setattr(generator, "get_unprocessed_items", lambda limit: items)
+    monkeypatch.setattr(generator, "get_recent_titles", lambda: [])
+    monkeypatch.setattr(generator, "_get_recent_domains", lambda: set())
+    monkeypatch.setattr(generator, "is_duplicate", lambda title, recent: False)
+    monkeypatch.setattr(
+        generator,
+        "generate_intelligence_card",
+        lambda raw_item_id, **kwargs: (
+            generated_for.append(raw_item_id)
+            or {
+                "one_line_summary": f"Card {raw_item_id}",
+                "importance_score": 0.8,
+            }
+        ),
+    )
+    monkeypatch.setattr(generator, "insert_intelligence_card", lambda *args: None)
+    monkeypatch.setattr(generator, "log_api_usage", lambda *args: None)
+
+    count = generator.process_unprocessed_items(max_items=50, max_cards=2)
+
+    assert count == 2
+    assert generated_for == [1, 2]
