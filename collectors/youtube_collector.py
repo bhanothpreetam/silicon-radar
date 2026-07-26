@@ -6,18 +6,24 @@ RSS feeds (no API key), fetches each video's transcript, and stores it
 as a raw item so the card generator can produce an intelligence card
 from the video's actual content — not just its title.
 
-Videos without a transcript yet (captions can lag upload by hours) are
-skipped without inserting, so they retry naturally on the next run.
+Videos without a transcript yet (captions can lag upload by hours) are skipped
+so they retry naturally. If YouTube blocks the runner IP entirely, the
+collector falls back to explicitly labelled RSS metadata instead of repeatedly
+making requests that cannot succeed.
 """
 
 import logging
+import os
 from datetime import datetime, timezone, timedelta
 
 import feedparser
+from bs4 import BeautifulSoup
 from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api._errors import (
-    TranscriptsDisabled, NoTranscriptFound, VideoUnavailable,
+    IpBlocked, NoTranscriptFound, RequestBlocked, TranscriptsDisabled,
+    VideoUnavailable,
 )
+from youtube_transcript_api.proxies import GenericProxyConfig
 
 from app.config import YOUTUBE_CHANNELS
 from db.models import insert_raw_item, get_client
@@ -27,6 +33,13 @@ log = logging.getLogger(__name__)
 MAX_TRANSCRIPT_CHARS = 40_000  # v2 needs the lecture's complete causal arc where available
 MIN_TRANSCRIPT_CHARS = 1200  # skips Shorts/teasers — not enough content for a real card
 FEED_URL = "https://www.youtube.com/feeds/videos.xml?channel_id={cid}"
+METADATA_ONLY_MARKER = "TRANSCRIPT STATUS: metadata-only"
+
+# Once YouTube rejects the GitHub runner's cloud IP, every later transcript
+# request in that job will fail for the same reason. Remember the state so all
+# configured channels do not repeat the same doomed request.
+_transcript_access_blocked = False
+_transcript_api: YouTubeTranscriptApi | None = None
 
 
 def _video_exists(url: str) -> bool:
@@ -35,15 +48,79 @@ def _video_exists(url: str) -> bool:
     return bool(r.data)
 
 
+def _get_transcript_api() -> YouTubeTranscriptApi:
+    """Build one transcript client, optionally routed through a user proxy."""
+    global _transcript_api
+    if _transcript_api is None:
+        proxy_url = os.getenv("YOUTUBE_TRANSCRIPT_PROXY_URL", "").strip()
+        proxy_config = None
+        if proxy_url:
+            proxy_config = GenericProxyConfig(
+                http_url=proxy_url,
+                https_url=proxy_url,
+            )
+        _transcript_api = YouTubeTranscriptApi(proxy_config=proxy_config)
+    return _transcript_api
+
+
 def fetch_transcript(video_id: str) -> str | None:
+    global _transcript_access_blocked
+
+    if _transcript_access_blocked:
+        return None
+
     try:
-        transcript = YouTubeTranscriptApi().fetch(video_id)
+        transcript = _get_transcript_api().fetch(video_id)
         return " ".join(seg.text for seg in transcript)
     except (TranscriptsDisabled, NoTranscriptFound, VideoUnavailable):
+        return None
+    except (IpBlocked, RequestBlocked):
+        _transcript_access_blocked = True
+        log.warning(
+            "  [YouTube] transcript access is blocked from this runner IP; "
+            "using RSS metadata for this run. Set YOUTUBE_TRANSCRIPT_PROXY_URL "
+            "to restore transcript-first ingestion."
+        )
         return None
     except Exception as e:
         log.warning(f"  [YouTube] transcript error for {video_id}: {e}")
         return None
+
+
+def _entry_description(entry) -> str:
+    """Extract the richest text exposed by YouTube's public RSS entry."""
+    candidates = [
+        getattr(entry, "media_description", "") or "",
+        entry.get("summary", "") or "",
+        entry.get("description", "") or "",
+    ]
+    candidates.extend(
+        part.get("value", "")
+        for part in (entry.get("content", []) or [])
+        if isinstance(part, dict)
+    )
+    cleaned = [
+        BeautifulSoup(value, "html.parser").get_text(" ", strip=True)
+        for value in candidates
+        if value
+    ]
+    return max(cleaned, key=len, default="")
+
+
+def _metadata_raw_text(channel_name: str, handle: str, title: str, description: str) -> str:
+    limitation = (
+        "The video transcript was unavailable because YouTube blocked the "
+        "cloud runner IP. Treat this as an announcement-level source: use only "
+        "the title and description below, lower confidence, and do not invent "
+        "claims, measurements, mechanisms, or quotations."
+    )
+    return (
+        f"YOUTUBE VIDEO by {channel_name} (@{handle})\n"
+        f"Title: {title}\n"
+        f"{METADATA_ONLY_MARKER}\n"
+        f"Source limitation: {limitation}\n\n"
+        f"DESCRIPTION:\n{description[:4000] if description else '(not supplied by the RSS feed)'}"
+    )
 
 
 def _collect_channel(channel_id: str, handle: str, source_id: int, cutoff: datetime) -> int:
@@ -70,15 +147,32 @@ def _collect_channel(channel_id: str, handle: str, source_id: int, cutoff: datet
 
         transcript = fetch_transcript(video_id)
         if not transcript:
-            log.info(f"  [YouTube] no transcript yet: {title[:60]} — will retry next run")
+            if not _transcript_access_blocked:
+                log.info(f"  [YouTube] no transcript yet: {title[:60]} — will retry next run")
+                continue
+
+            description = _entry_description(entry)
+            item_id = insert_raw_item(
+                source_id=source_id,
+                title=f"[YouTube] {channel_name}: {title}",
+                url=url,
+                raw_text=_metadata_raw_text(
+                    channel_name, handle, title, description
+                ),
+                published_at=published,
+            )
+            if item_id:
+                new_here += 1
+                log.info(
+                    f"  [YouTube] New metadata-only item: "
+                    f"{channel_name} — {title[:60]}"
+                )
             continue
         if len(transcript) < MIN_TRANSCRIPT_CHARS:
             log.info(f"  [YouTube] skipping Short/teaser ({len(transcript)} chars): {title[:60]}")
             continue
 
-        description = ""
-        if hasattr(entry, "media_description"):
-            description = entry.media_description or ""
+        description = _entry_description(entry)
 
         raw_text = (
             f"YOUTUBE VIDEO by {channel_name} (@{handle})\n"

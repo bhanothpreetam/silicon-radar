@@ -10,6 +10,7 @@ import logging
 import os
 import re
 import random
+import time
 import urllib.parse
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -32,13 +33,21 @@ def _patch_xclid() -> None:
     from twscrape import queue_client as qc
 
     class _StubGen:
-        def calc(self, method: str, path: str) -> str:
+        def calc(self, method: str, path: str, *args, **kwargs) -> str:
             # Produce a random-looking base64 string of reasonable length
             return base64.b64encode(os.urandom(80)).decode()
 
     _stub = _StubGen()
 
-    async def _patched_get(username: str, fresh: bool = False):
+    async def _patched_get(
+        username: str,
+        fresh: bool = False,
+        proxy=None,
+        **kwargs,
+    ):
+        # twscrape 0.18.2+ passes proxy= here. Keep this shim tolerant of
+        # future transport-only keyword arguments: the stub itself performs
+        # no network access, so they do not affect the transaction ID.
         return _stub
 
     qc.XClIdGenStore.get = _patched_get  # type: ignore[assignment]
@@ -48,6 +57,8 @@ _patch_xclid()
 
 # Path for twscrape's account/session database
 _DB_PATH = Path(__file__).parent.parent / "data" / "twscrape_accounts.db"
+TWITTER_ACCOUNT_TIMEOUT_SECONDS = 25.0
+TWITTER_RUN_BUDGET_SECONDS = 90.0
 
 # Credibility by tier (username → score)
 _TIER_MAP: dict[str, int] = {}
@@ -267,8 +278,17 @@ async def collect_twitter_accounts(
     api = await _get_api()
     cutoff = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
     total_new = 0
+    run_started = time.monotonic()
 
     for username in accounts:
+        remaining_budget = TWITTER_RUN_BUDGET_SECONDS - (time.monotonic() - run_started)
+        if remaining_budget <= 0.05:
+            log.warning(
+                f"  [Twitter] collector budget ({TWITTER_RUN_BUDGET_SECONDS:.0f}s) "
+                "exhausted — preserving time for card generation"
+            )
+            break
+
         credibility = tier_credibility(username)
         # Tier 1 requires more engagement before we care
         min_likes = 20 if credibility == 10 else 5
@@ -295,10 +315,14 @@ async def collect_twitter_accounts(
                 return results
 
             try:
-                tweet_list = await asyncio.wait_for(_fetch_tweets(), timeout=45.0)
+                account_timeout = min(TWITTER_ACCOUNT_TIMEOUT_SECONDS, remaining_budget)
+                tweet_list = await asyncio.wait_for(_fetch_tweets(), timeout=account_timeout)
             except asyncio.TimeoutError:
-                log.warning(f"  [Twitter] @{username} timed out after 45s — skipping")
-                tweet_list = []
+                log.warning(
+                    f"  [Twitter] @{username} timed out after {account_timeout:.0f}s; "
+                    "aborting this Twitter run because the shared account/queue is unavailable"
+                )
+                break
 
             # Mine endorsement edges (retweets/quotes/mentions/links) before
             # the storage loop discards retweets — fuel for source discovery

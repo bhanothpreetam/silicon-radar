@@ -33,3 +33,4 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TWITTER_COOKIES: ${{ secrets.TWITTER_COOKIES }}
+          YOUTUBE_TRANSCRIPT_PROXY_URL: ${{ secrets.YOUTUBE_TRANSCRIPT_PROXY_URL }}
