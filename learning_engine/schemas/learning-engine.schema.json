@@ -1,0 +1,293 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bitsnbrews.dev/radar/learning-engine.schema.json",
+  "title": "Radar Learning Engine Contracts",
+  "description": "Canonical contracts for grounded source spans, graph nodes and edges, compiled cases, and immutable learner observations.",
+  "$defs": {
+    "source_span": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "span_id",
+        "corpus_version",
+        "book_id",
+        "chapter_id",
+        "page_id",
+        "page_index",
+        "block_index",
+        "char_start",
+        "char_end",
+        "kind",
+        "text",
+        "content_sha256",
+        "source_asset_id",
+        "confidence",
+        "needs_review",
+        "provenance"
+      ],
+      "properties": {
+        "schema_version": {"type": "string"},
+        "span_id": {"type": "string", "minLength": 1},
+        "corpus_version": {"type": "string", "minLength": 1},
+        "book_id": {"type": "string", "minLength": 1},
+        "chapter_id": {"type": "string", "minLength": 1},
+        "section_id": {"type": ["string", "null"]},
+        "page_id": {"type": "string", "minLength": 1},
+        "page_index": {"type": "integer", "minimum": 1},
+        "book_page": {"type": ["integer", "null"]},
+        "block_index": {"type": "integer", "minimum": 1},
+        "char_start": {"type": "integer", "minimum": 0},
+        "char_end": {"type": "integer", "minimum": 1},
+        "kind": {
+          "enum": [
+            "heading",
+            "asset_reference",
+            "table",
+            "equation",
+            "caption",
+            "example",
+            "problem",
+            "prose"
+          ]
+        },
+        "text": {"type": "string", "minLength": 1},
+        "content_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "source_asset_id": {"type": "string", "minLength": 1},
+        "confidence": {"enum": ["high", "medium", "low", "unknown"]},
+        "needs_review": {"type": "boolean"},
+        "review_notes": {"type": "string"},
+        "provenance": {
+          "type": "object",
+          "required": [
+            "archive_sha256",
+            "raw_page_member",
+            "assembled_chapter_member"
+          ],
+          "properties": {
+            "archive_sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "raw_page_member": {"type": "string"},
+            "assembled_chapter_member": {"type": "string"}
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "concept": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "concept_id",
+        "canonical_name",
+        "aliases",
+        "problem_solved",
+        "source_span_ids",
+        "content_status",
+        "graph_status",
+        "corpus_version",
+        "revision"
+      ],
+      "properties": {
+        "schema_version": {"type": "string"},
+        "concept_id": {"type": "string", "minLength": 1},
+        "canonical_name": {"type": "string", "minLength": 1},
+        "aliases": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "problem_solved": {"type": "string", "minLength": 1},
+        "mechanism": {"type": "string"},
+        "equation_ids": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "invariants": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "misconceptions": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "problem_families": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "source_span_ids": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "visual_asset_ids": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "content_status": {
+          "enum": [
+            "extracted",
+            "graph_reviewed",
+            "case_authored",
+            "leakage_checked",
+            "content_ready",
+            "active",
+            "revised",
+            "retired"
+          ]
+        },
+        "graph_status": {"enum": ["proposed", "approved", "retired"]},
+        "corpus_version": {"type": "string"},
+        "revision": {"type": "integer", "minimum": 1}
+      },
+      "additionalProperties": false
+    },
+    "concept_edge": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "edge_id",
+        "from_concept_id",
+        "to_concept_id",
+        "edge_type",
+        "rationale",
+        "review_status"
+      ],
+      "properties": {
+        "schema_version": {"type": "string"},
+        "edge_id": {"type": "string", "minLength": 1},
+        "from_concept_id": {"type": "string", "minLength": 1},
+        "to_concept_id": {"type": "string", "minLength": 1},
+        "edge_type": {
+          "enum": [
+            "hard_requires",
+            "supporting_requires",
+            "explains",
+            "contrasts_with",
+            "trades_off_with",
+            "breaks_under",
+            "same_mechanism_different_layer",
+            "historically_led_to",
+            "appears_in_product",
+            "measured_by",
+            "implemented_by"
+          ]
+        },
+        "rationale": {"type": "string", "minLength": 1},
+        "review_status": {"enum": ["proposed", "approved", "rejected"]}
+      },
+      "additionalProperties": false
+    },
+    "case_bundle": {
+      "type": "object",
+      "required": [
+        "case_id",
+        "case_revision",
+        "concept_id",
+        "experience_type",
+        "corpus_version",
+        "pre_reveal",
+        "reveal",
+        "evaluation",
+        "claim_ledger"
+      ],
+      "properties": {
+        "case_id": {"type": "string", "minLength": 1},
+        "case_revision": {"type": "integer", "minimum": 1},
+        "concept_id": {"type": "string", "minLength": 1},
+        "experience_type": {
+          "enum": ["frontier", "cold_probe", "bridge"]
+        },
+        "corpus_version": {"type": "string", "minLength": 1},
+        "pre_reveal": {
+          "type": "object",
+          "description": "Payload deliverable before the learner earns the reveal. It must not contain canonical_name.",
+          "not": {"required": ["canonical_name"]}
+        },
+        "reveal": {
+          "type": "object",
+          "required": ["canonical_name", "formalization"],
+          "properties": {
+            "canonical_name": {"type": "string", "minLength": 1},
+            "formalization": {"type": "object"}
+          }
+        },
+        "evaluation": {
+          "type": "object",
+          "required": ["reasoning_atoms", "rubric"],
+          "properties": {
+            "reasoning_atoms": {
+              "type": "array",
+              "items": {"type": "string"}
+            },
+            "rubric": {
+              "type": "array",
+              "items": {"type": "object"}
+            }
+          }
+        },
+        "claim_ledger": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["claim_id", "claim", "source_span_ids"],
+            "properties": {
+              "claim_id": {"type": "string"},
+              "claim": {"type": "string"},
+              "source_span_ids": {
+                "type": "array",
+                "minItems": 1,
+                "items": {"type": "string"}
+              }
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "attempt_event": {
+      "type": "object",
+      "required": [
+        "event_id",
+        "attempt_id",
+        "learner_id",
+        "case_id",
+        "case_revision",
+        "event_type",
+        "sequence",
+        "occurred_at",
+        "payload"
+      ],
+      "properties": {
+        "event_id": {"type": "string", "minLength": 1},
+        "attempt_id": {"type": "string", "minLength": 1},
+        "learner_id": {"type": "string", "minLength": 1},
+        "case_id": {"type": "string", "minLength": 1},
+        "case_revision": {"type": "integer", "minimum": 1},
+        "event_type": {
+          "enum": [
+            "case_started",
+            "hypothesis_committed",
+            "confidence_recorded",
+            "hint_requested",
+            "evidence_revealed",
+            "model_revised",
+            "mechanism_proposed",
+            "title_revealed",
+            "transfer_submitted",
+            "case_completed",
+            "case_abandoned"
+          ]
+        },
+        "sequence": {"type": "integer", "minimum": 1},
+        "occurred_at": {"type": "string", "format": "date-time"},
+        "payload": {"type": "object"}
+      },
+      "additionalProperties": false
+    }
+  }
+}

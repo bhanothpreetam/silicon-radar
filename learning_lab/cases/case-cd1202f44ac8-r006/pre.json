@@ -1,0 +1,104 @@
+{
+  "case_id": "case-cd1202f44ac8-r006",
+  "case_revision": 6,
+  "experience_type": "frontier",
+  "corpus_version": "hp7-ch2-ch3-v0.1",
+  "investigation_mode": "performance anomaly through execution trace and timing analysis",
+  "pre_reveal": {
+    "mystery_title": "The Overlapping Operations Anomaly",
+    "opening": {
+      "scene": "You are tasked with optimizing a specialized processing unit. Each operation must pass through five distinct, ordered stages: S1, S2, S3, S4, and S5. Each stage requires exactly one clock cycle to complete its work on an operation. Crucially, each stage (S1, S2, etc.) represents a unique, dedicated resource that can only process one operation at a time.",
+      "observations": [
+        "An isolated operation, processed entirely by itself, takes 5 clock cycles from its entry into S1 until its completion from S5.",
+        "You have three completely independent operations (I1, I2, I3) waiting to be processed. They have no data dependencies on each other."
+      ],
+      "constraints": [
+        "Each stage (S1-S5) is a distinct resource and can only process one operation per clock cycle.",
+        "Operations must proceed sequentially through stages S1, then S2, then S3, S4, and finally S5.",
+        "An operation occupies a stage for exactly one clock cycle."
+      ],
+      "central_question": "What is the minimum total number of clock cycles required to complete all three operations (I1, I2, and I3), and what is the underlying resource allocation rule that enables this minimum?",
+      "commitment_prompt": "Propose a schedule (e.g., a table showing which operation is in which stage at each cycle) that achieves the minimum total cycles. State the fundamental rule about resource usage that your schedule relies upon.",
+      "confidence_prompt": "How confident are you in your proposed schedule and rule (0-100)?"
+    },
+    "evidence_beats": [
+      {
+        "beat_id": "e1",
+        "title": "Partial Execution Trace",
+        "evidence": "You've observed the start of the execution for the three independent operations (I1, I2, I3) on the five-stage unit. The trace below shows the state for the first three clock cycles:\n\n| Cycle | S1 | S2 | S3 | S4 | S5 |\n|---|---|---|---|---|---|\n| 1 | I1 |    |    |    |    |\n| 2 | I2 | I1 |    |    |    |\n| 3 | I3 | I2 | I1 |    |    |\n\nRecall that each stage is a distinct resource and can only process one operation per cycle.",
+        "question": "Extend this trace to show the state for cycles 4 onward until all three operations are completed. What is the total number of clock cycles required? Explicitly confirm that no stage resource is used by more than one operation in any given cycle.",
+        "response_mode": "calculate",
+        "truth_fact_ids": [
+          "pipe-f1",
+          "pipe-f2",
+          "pipe-f9"
+        ],
+        "hints": [
+          "Remember that an operation moves from S_n to S_{n+1} in the next cycle, freeing S_n.",
+          "Consider the state of each stage (S1-S5) independently for each clock cycle.",
+          "The goal is to complete all three operations, not just I1."
+        ]
+      },
+      {
+        "beat_id": "e2",
+        "title": "Reconciling Latency and Completion Rate",
+        "evidence": "Your trace should show that all three operations complete in a total of 7 clock cycles. We previously established that a single, isolated operation takes 5 cycles to complete.",
+        "question": "How can 3 operations, each individually requiring 5 cycles, collectively complete in 7 cycles? Distinguish between the time it takes for a single operation to pass through all stages (its latency) and the rate at which operations are completed by the unit. Which aspect of your initial hypothesis, if any, does this observation challenge or refine?",
+        "response_mode": "explain",
+        "truth_fact_ids": [
+          "pipe-f2",
+          "pipe-f9"
+        ],
+        "hints": [
+          "Focus on what happens *between* operations, not just within a single operation.",
+          "Think about how many operations are 'in flight' at any given moment.",
+          "Does the completion of one operation necessarily mean the entire unit is idle?"
+        ]
+      },
+      {
+        "beat_id": "e3",
+        "title": "Scaling to Many Operations",
+        "evidence": "Consider a scenario with 1,000 completely independent operations. If these operations were processed strictly one after another, with no overlap, the total time would be 5,000 cycles. However, the unit is designed such that a new, independent operation can enter stage S1 every single clock cycle, provided S1 is free.",
+        "question": "Derive a general formula, T(N), for the total cycles required to complete N independent operations using this unit. Calculate T(1000). What is the average cycles per instruction (CPI) for this stream of 1,000 operations? What does the CPI approach as N becomes very large?",
+        "response_mode": "calculate",
+        "truth_fact_ids": [
+          "pipe-f3",
+          "pipe-f4",
+          "pipe-f5"
+        ],
+        "hints": [
+          "The initial cycles are spent 'filling' the unit, after which operations complete at a steady rate.",
+          "Think about how many cycles it takes for the *first* operation to complete, and then how many additional cycles for the remaining N-1 operations.",
+          "CPI is total cycles divided by the number of instructions."
+        ]
+      },
+      {
+        "beat_id": "e4",
+        "title": "Clock Period and Stage Balancing",
+        "evidence": "The processing unit's stages are built from combinational logic and latches. The delays for four combinational logic blocks are measured as 240 ps, 170 ps, 310 ps, and 180 ps. Each latch between stages introduces an overhead of 35 ps. The clock period is set by the slowest stage's combinational delay plus the latch overhead.\n\nNow, consider a design change: the 310 ps combinational stage is split into two new stages, each with a delay of 155 ps. This increases the total number of stages from four to five, but each new stage still has the 35 ps latch overhead.",
+        "question": "For both the original 4-stage configuration and the new 5-stage configuration:\n1. What is the clock period?\n2. What is the total latency for a single operation (in ps)?\n3. What is the ideal steady-state throughput (operations per second)?\nExplain why the throughput changes, even if the total latency for a single operation remains similar.",
+        "response_mode": "calculate",
+        "truth_fact_ids": [
+          "pipe-f6",
+          "pipe-f7",
+          "pipe-f8"
+        ],
+        "hints": [
+          "The clock period is determined by the longest path through any single stage, including latch overhead.",
+          "Throughput is the inverse of the clock period, assuming one operation completes per cycle.",
+          "Latency is the total time for one operation to pass through all stages."
+        ]
+      }
+    ],
+    "design_gate": {
+      "prompt": "Based on the evidence, describe the core architectural mechanism that allows a sequence of operations to complete faster than the sum of their individual execution times. What are the essential characteristics of this mechanism, and what kind of dependence or resource conflict would prevent it from achieving its ideal completion rate?",
+      "required_elements": [
+        "Distinct stages hold different operations concurrently.",
+        "A stage accepts new work when that stage, not the whole operation, is free.",
+        "The design improves completion rate rather than shortening one operation.",
+        "The slowest stage and boundary overhead constrain the clock."
+      ],
+      "confidence_prompt": "How confident are you in your proposed mechanism and its limitations (0-100)?"
+    }
+  }
+}

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#080b0f">
+    <title>Radar Learning Lab</title>
+    <link rel="stylesheet" href="./style.css">
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">BITS'N'BREWS / RADAR LAB</p>
+          <p class="status" id="status">Preparing an investigation…</p>
+        </div>
+        <button class="ghost-button" id="next-case" type="button" hidden>Next case</button>
+      </header>
+
+      <section id="app" aria-live="polite">
+        <div class="loading-panel">
+          <span class="pulse"></span>
+          <p>Loading the first piece of evidence.</p>
+        </div>
+      </section>
+    </main>
+
+    <template id="response-template">
+      <div class="response-block">
+        <label>Your current model</label>
+        <textarea rows="5" placeholder="Commit to a mechanism, prediction, or diagnosis."></textarea>
+        <div class="confidence-row">
+          <label>Confidence <output>50%</output></label>
+          <input type="range" min="0" max="100" value="50">
+        </div>
+      </div>
+    </template>
+
+    <script src="./app.js" defer></script>
+  </body>
+</html>

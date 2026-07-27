@@ -1,0 +1,351 @@
+{
+  "corpus_version": "hp7-ch2-ch3-v0.1",
+  "concepts": [
+    {
+      "concept_id": "hp7-cache-hit-miss-model",
+      "canonical_name": "Cache hits, misses, and block movement",
+      "aliases": ["cache hit and miss behavior"],
+      "problem_solved": "Establishes how requests are looked up, why blocks move between hierarchy levels, and where hit time and miss penalty originate.",
+      "source_chapters": ["hp7-ch02"],
+      "preferred_sections": ["2.1"],
+      "match_terms": ["cache hit", "cache miss", "hit time", "miss penalty", "cache block"],
+      "revision": 1
+    },
+    {
+      "concept_id": "hp7-locality",
+      "canonical_name": "Temporal and spatial locality",
+      "aliases": ["locality of reference"],
+      "problem_solved": "Explains why a small, fast memory can serve most accesses despite a much larger working store.",
+      "source_chapters": ["hp7-ch02"],
+      "preferred_sections": ["2.1"],
+      "match_terms": ["temporal locality", "spatial locality", "locality"],
+      "revision": 1
+    },
+    {
+      "concept_id": "hp7-amat",
+      "canonical_name": "Average memory access time",
+      "aliases": ["AMAT"],
+      "problem_solved": "Combines hit time, miss frequency, and miss penalty into a latency model for a memory hierarchy.",
+      "source_chapters": ["hp7-ch02"],
+      "preferred_sections": ["2.1"],
+      "match_terms": ["average memory access time", "amat", "miss penalty"],
+      "revision": 1
+    },
+    {
+      "concept_id": "hp7-multilevel-cache",
+      "canonical_name": "Multilevel cache hierarchy",
+      "aliases": ["L1/L2/L3 cache hierarchy"],
+      "problem_solved": "Reduces the effective penalty of misses without forcing one cache to be simultaneously tiny, fast, and large.",
+      "source_chapters": ["hp7-ch02"],
+      "preferred_sections": ["2.1", "2.3"],
+      "match_terms": ["multilevel cache", "second-level cache", "l2 cache", "three-level"],
+      "revision": 1
+    },
+    {
+      "concept_id": "hp7-local-global-miss-rate",
+      "canonical_name": "Local versus global miss rate",
+      "aliases": ["local miss rate", "global miss rate"],
+      "problem_solved": "Prevents misleading comparisons between cache levels that receive different request populations.",
+      "source_chapters": ["hp7-ch02"],
+      "preferred_sections": ["2.6"],
+      "match_terms": ["local miss rate", "global miss rate"],
+      "revision": 1
+    },
+    {
+      "concept_id": "hp7-victim-cache",
+      "canonical_name": "Victim cache",
+      "aliases": ["victim buffer"],
+      "problem_solved": "Recovers recently evicted blocks cheaply when conflicts cause rapid displacement and reuse.",
+      "source_chapters": ["hp7-ch02"],
+      "preferred_sections": ["2.3"],
+      "match_terms": ["victim cache", "victim buffer"],
+      "revision": 1
+    },
+    {
+      "concept_id": "hp7-nonblocking-cache",
+      "canonical_name": "Nonblocking cache",
+      "aliases": ["hit under miss", "miss under miss"],
+      "problem_solved": "Allows independent memory operations to make progress while one or more cache misses are outstanding.",
+      "source_chapters": ["hp7-ch02"],
+      "preferred_sections": ["2.3"],
+      "match_terms": ["nonblocking cache", "nonblocking caches", "hit under miss", "miss under miss"],
+      "revision": 1
+    },
+    {
+      "concept_id": "hp7-hardware-prefetch",
+      "canonical_name": "Hardware data prefetching",
+      "aliases": ["hardware prefetch"],
+      "problem_solved": "Predicts future accesses and begins memory transfers before the demand access would otherwise stall.",
+      "source_chapters": ["hp7-ch02"],
+      "preferred_sections": ["2.3"],
+      "match_terms": ["hardware prefetch", "data prefetch", "prefetching"],
+      "revision": 1
+    },
+    {
+      "concept_id": "hp7-virtual-memory-translation",
+      "canonical_name": "Paged virtual-memory translation",
+      "aliases": ["virtual-to-physical address translation", "page-table translation"],
+      "problem_solved": "Maps protected virtual address spaces onto physical memory while allowing relocation, sharing, and demand paging.",
+      "source_chapters": ["hp7-ch02"],
+      "preferred_sections": ["2.4"],
+      "match_terms": ["virtual memory", "virtual address", "physical address", "page table"],
+      "revision": 1
+    },
+    {
+      "concept_id": "hp7-tlb",
+      "canonical_name": "Translation lookaside buffer",
+      "aliases": ["TLB", "translation cache"],
+      "problem_solved": "Caches recent page-table translations so address translation does not require a page-table walk on every memory reference.",
+      "source_chapters": ["hp7-ch02"],
+      "preferred_sections": ["2.4", "2.6"],
+      "match_terms": ["translation lookaside buffer", "tlb", "translation cache"],
+      "revision": 1
+    },
+    {
+      "concept_id": "hp7-pipeline-overlap",
+      "canonical_name": "Instruction pipelining and overlap",
+      "aliases": ["instruction pipeline", "pipelined execution"],
+      "problem_solved": "Improves instruction throughput by overlapping different execution stages while exposing hazards that can prevent overlap.",
+      "source_chapters": ["hp7-ch03"],
+      "preferred_sections": ["3.1"],
+      "match_terms": ["pipelining", "pipelined processor", "pipeline stall", "overlap the execution"],
+      "revision": 1
+    },
+    {
+      "concept_id": "hp7-ilp",
+      "canonical_name": "Instruction-level parallelism",
+      "aliases": ["ILP"],
+      "problem_solved": "Identifies independent work among instructions that a processor may overlap or issue together.",
+      "source_chapters": ["hp7-ch03"],
+      "preferred_sections": ["3.1"],
+      "match_terms": ["instruction-level parallelism", "ilp"],
+      "revision": 1
+    },
+    {
+      "concept_id": "hp7-dependence-taxonomy",
+      "canonical_name": "True and name dependences",
+      "aliases": ["RAW, WAR, and WAW dependences", "data and name dependences"],
+      "problem_solved": "Separates constraints that preserve program meaning from false constraints caused only by reusing storage names.",
+      "source_chapters": ["hp7-ch03"],
+      "preferred_sections": ["3.1", "3.3"],
+      "match_terms": ["data dependence", "name dependence", "antidependence", "output dependence"],
+      "revision": 1
+    },
+    {
+      "concept_id": "hp7-branch-prediction",
+      "canonical_name": "Dynamic branch prediction",
+      "aliases": ["branch predictor"],
+      "problem_solved": "Supplies a likely next fetch address before a control dependence is resolved.",
+      "source_chapters": ["hp7-ch03"],
+      "preferred_sections": ["3.4"],
+      "match_terms": ["branch prediction", "branch predictor", "misprediction"],
+      "revision": 1
+    },
+    {
+      "concept_id": "hp7-register-renaming",
+      "canonical_name": "Register renaming",
+      "aliases": ["physical register renaming"],
+      "problem_solved": "Removes WAR and WAW name dependences by mapping architectural names onto distinct physical storage.",
+      "source_chapters": ["hp7-ch03"],
+      "preferred_sections": ["3.5"],
+      "match_terms": ["register renaming", "physical register", "rename map"],
+      "revision": 1
+    },
+    {
+      "concept_id": "hp7-dynamic-scheduling",
+      "canonical_name": "Dynamic instruction scheduling",
+      "aliases": ["out-of-order scheduling"],
+      "problem_solved": "Lets ready instructions execute around stalled instructions while preserving true dependences.",
+      "source_chapters": ["hp7-ch03"],
+      "preferred_sections": ["3.6"],
+      "match_terms": ["dynamic scheduling", "out-of-order", "issue queue"],
+      "revision": 1
+    },
+    {
+      "concept_id": "hp7-rob-speculation",
+      "canonical_name": "Precise speculation with a reorder buffer",
+      "aliases": ["ROB", "in-order commit"],
+      "problem_solved": "Allows speculative, out-of-order execution while preserving precise architectural state and recoverability.",
+      "source_chapters": ["hp7-ch03"],
+      "preferred_sections": ["3.6"],
+      "match_terms": ["reorder buffer", "in-order commit", "precise exception", "speculative execution"],
+      "revision": 1
+    },
+    {
+      "concept_id": "hp7-memory-disambiguation",
+      "canonical_name": "Dynamic memory dependence disambiguation",
+      "aliases": ["memory dependence prediction"],
+      "problem_solved": "Allows loads to bypass older stores when their addresses are predicted not to conflict, with recovery when that prediction is wrong.",
+      "source_chapters": ["hp7-ch03"],
+      "preferred_sections": ["3.7"],
+      "match_terms": ["memory dependence", "memory disambiguation", "load speculation"],
+      "revision": 1
+    },
+    {
+      "concept_id": "hp7-smt",
+      "canonical_name": "Simultaneous multithreading",
+      "aliases": ["SMT"],
+      "problem_solved": "Uses instructions from multiple threads to occupy execution resources that one thread cannot fill consistently.",
+      "source_chapters": ["hp7-ch03"],
+      "preferred_sections": ["3.11"],
+      "match_terms": ["simultaneous multithreading", "fine-grained multithreading", "thread-level parallelism"],
+      "revision": 1
+    }
+  ],
+  "edges": [
+    {
+      "edge_id": "edge-cache-model-requires-locality",
+      "from_concept_id": "hp7-cache-hit-miss-model",
+      "to_concept_id": "hp7-locality",
+      "edge_type": "hard_requires",
+      "rationale": "Hit and miss behavior is useful only after the learner understands why recently or adjacently used blocks are likely to be requested again."
+    },
+    {
+      "edge_id": "edge-amat-requires-locality",
+      "from_concept_id": "hp7-amat",
+      "to_concept_id": "hp7-cache-hit-miss-model",
+      "edge_type": "hard_requires",
+      "rationale": "AMAT combines hit time, miss rate, and miss penalty, so those events and costs must already be meaningful."
+    },
+    {
+      "edge_id": "edge-multilevel-requires-amat",
+      "from_concept_id": "hp7-multilevel-cache",
+      "to_concept_id": "hp7-amat",
+      "edge_type": "hard_requires",
+      "rationale": "The value and cost of an additional cache level are reasoned about by expanding the AMAT model."
+    },
+    {
+      "edge_id": "edge-miss-rates-requires-multilevel",
+      "from_concept_id": "hp7-local-global-miss-rate",
+      "to_concept_id": "hp7-multilevel-cache",
+      "edge_type": "hard_requires",
+      "rationale": "Local and global denominators become distinct only when requests pass through multiple cache levels."
+    },
+    {
+      "edge_id": "edge-victim-requires-locality",
+      "from_concept_id": "hp7-victim-cache",
+      "to_concept_id": "hp7-cache-hit-miss-model",
+      "edge_type": "hard_requires",
+      "rationale": "The mechanism depends on understanding eviction, a subsequent miss, and reuse of the displaced block."
+    },
+    {
+      "edge_id": "edge-nonblocking-requires-cache-model",
+      "from_concept_id": "hp7-nonblocking-cache",
+      "to_concept_id": "hp7-cache-hit-miss-model",
+      "edge_type": "hard_requires",
+      "rationale": "Hit-under-miss behavior assumes the learner can already trace an ordinary blocking cache hit and miss."
+    },
+    {
+      "edge_id": "edge-prefetch-requires-locality",
+      "from_concept_id": "hp7-hardware-prefetch",
+      "to_concept_id": "hp7-locality",
+      "edge_type": "hard_requires",
+      "rationale": "A prefetcher exploits predictable address behavior arising from workload locality."
+    },
+    {
+      "edge_id": "edge-prefetch-requires-cache-model",
+      "from_concept_id": "hp7-hardware-prefetch",
+      "to_concept_id": "hp7-cache-hit-miss-model",
+      "edge_type": "hard_requires",
+      "rationale": "Prefetch timeliness, pollution, and saved miss penalty require an existing model of cache lookup and block fills."
+    },
+    {
+      "edge_id": "edge-tlb-requires-translation",
+      "from_concept_id": "hp7-tlb",
+      "to_concept_id": "hp7-virtual-memory-translation",
+      "edge_type": "hard_requires",
+      "rationale": "A TLB is meaningful only after the learner can trace the virtual-to-physical translation it is caching."
+    },
+    {
+      "edge_id": "edge-tlb-requires-cache-model",
+      "from_concept_id": "hp7-tlb",
+      "to_concept_id": "hp7-cache-hit-miss-model",
+      "edge_type": "hard_requires",
+      "rationale": "The TLB is a specialized cache, so its hits, misses, reach, and replacement behavior reuse the cache model."
+    },
+    {
+      "edge_id": "edge-ilp-requires-pipeline",
+      "from_concept_id": "hp7-ilp",
+      "to_concept_id": "hp7-pipeline-overlap",
+      "edge_type": "hard_requires",
+      "rationale": "Instruction-level parallelism is observed and exploited through overlap beyond the baseline pipeline."
+    },
+    {
+      "edge_id": "edge-dependence-requires-ilp",
+      "from_concept_id": "hp7-dependence-taxonomy",
+      "to_concept_id": "hp7-ilp",
+      "edge_type": "hard_requires",
+      "rationale": "Dependences are meaningful here as the constraints on overlapping instruction execution."
+    },
+    {
+      "edge_id": "edge-renaming-requires-dependence",
+      "from_concept_id": "hp7-register-renaming",
+      "to_concept_id": "hp7-dependence-taxonomy",
+      "edge_type": "hard_requires",
+      "rationale": "The learner must distinguish true dependences from name dependences before inventing renaming."
+    },
+    {
+      "edge_id": "edge-scheduling-requires-dependence",
+      "from_concept_id": "hp7-dynamic-scheduling",
+      "to_concept_id": "hp7-dependence-taxonomy",
+      "edge_type": "hard_requires",
+      "rationale": "Scheduling decisions require knowing which instruction relationships must actually be preserved."
+    },
+    {
+      "edge_id": "edge-prediction-requires-ilp",
+      "from_concept_id": "hp7-branch-prediction",
+      "to_concept_id": "hp7-ilp",
+      "edge_type": "hard_requires",
+      "rationale": "The branch-prediction mystery assumes the learner understands why a deep, wide pipeline needs a continuing instruction stream."
+    },
+    {
+      "edge_id": "edge-rob-requires-renaming",
+      "from_concept_id": "hp7-rob-speculation",
+      "to_concept_id": "hp7-register-renaming",
+      "edge_type": "hard_requires",
+      "rationale": "The selected modern ROB treatment assumes speculative results can reside in renamed physical state."
+    },
+    {
+      "edge_id": "edge-rob-requires-scheduling",
+      "from_concept_id": "hp7-rob-speculation",
+      "to_concept_id": "hp7-dynamic-scheduling",
+      "edge_type": "hard_requires",
+      "rationale": "A reorder buffer is motivated by the need to recover precise state after out-of-order completion."
+    },
+    {
+      "edge_id": "edge-rob-requires-prediction",
+      "from_concept_id": "hp7-rob-speculation",
+      "to_concept_id": "hp7-branch-prediction",
+      "edge_type": "hard_requires",
+      "rationale": "The case uses control speculation as the source of work that may later need to be squashed."
+    },
+    {
+      "edge_id": "edge-disambiguation-requires-scheduling",
+      "from_concept_id": "hp7-memory-disambiguation",
+      "to_concept_id": "hp7-dynamic-scheduling",
+      "edge_type": "hard_requires",
+      "rationale": "Memory disambiguation extends out-of-order scheduling to loads and stores whose addresses may be unresolved."
+    },
+    {
+      "edge_id": "edge-smt-requires-ilp",
+      "from_concept_id": "hp7-smt",
+      "to_concept_id": "hp7-ilp",
+      "edge_type": "hard_requires",
+      "rationale": "SMT is motivated by the issue-slot and resource underutilization left by limited single-thread ILP."
+    },
+    {
+      "edge_id": "edge-nonblocking-dynamic-bridge",
+      "from_concept_id": "hp7-nonblocking-cache",
+      "to_concept_id": "hp7-dynamic-scheduling",
+      "edge_type": "same_mechanism_different_layer",
+      "rationale": "Both mechanisms preserve progress by allowing independent work to bypass an operation waiting on a long-latency event."
+    },
+    {
+      "edge_id": "edge-prefetch-prediction-bridge",
+      "from_concept_id": "hp7-hardware-prefetch",
+      "to_concept_id": "hp7-branch-prediction",
+      "edge_type": "same_mechanism_different_layer",
+      "rationale": "Both predict future demand to move a latency-critical action earlier, trading accuracy and recovery or pollution cost for timeliness."
+    }
+  ]
+}

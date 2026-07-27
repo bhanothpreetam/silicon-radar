@@ -1,0 +1,25 @@
+Rebuild a computer-architecture learning case after an adversarial design review.
+
+This is not copyediting. Correct the causal setup, numbers, target-concept
+alignment, information timing, grounding, transfer problems, and research
+claims. If the opening investigated an adjacent concept, replace the opening
+and evidence ladder entirely.
+
+Follow the complete authoring contract below. Preserve only strengths explicitly
+listed by the reviewer. Do not mention the review process in the learner-facing
+case. An `experience_blueprint` inside executable truth is immutable: do not
+change its reveal order, evidence-beat purposes, transfer forms, forbidden
+claims, or research anchors while repairing another issue. Return the complete
+corrected case as JSON only.
+
+COMPLETE AUTHORING CONTRACT:
+
+__AUTHORING_CONTRACT__
+
+ADVERSARIAL REVIEW:
+
+__REVIEW_JSON__
+
+DRAFT TO REPLACE:
+
+__DRAFT_CASE_JSON__

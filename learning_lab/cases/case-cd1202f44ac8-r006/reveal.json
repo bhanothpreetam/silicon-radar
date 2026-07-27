@@ -1,0 +1,195 @@
+{
+  "case_id": "case-cd1202f44ac8-r006",
+  "case_revision": 6,
+  "experience_type": "frontier",
+  "corpus_version": "hp7-ch2-ch3-v0.1",
+  "concept_id": "hp7-pipeline-overlap",
+  "reveal": {
+    "canonical_name": "Instruction pipelining and overlap",
+    "earned_title": "The Pipelined Processor: Throughput Through Overlap",
+    "why_it_exists": "The design problem is to increase the rate at which instructions complete without pretending that one instruction's ordered work has vanished. The source describes pipelining as overlapping instruction execution and calls the available overlap instruction-level parallelism. It also gives the accounting identity CPI = base CPI + stall contributions. Together they frame the architect's real task: create legal overlap, then explain every event that prevents the ideal completion rate.",
+    "mechanism": [
+      {
+        "step": 1,
+        "name": "Decomposition into Stages",
+        "explanation": "An instruction's execution is broken down into a sequence of smaller, independent steps or stages (e.g., fetch, decode, execute, memory access, write-back). Each stage performs a specific part of the overall operation."
+      },
+      {
+        "step": 2,
+        "name": "Dedicated Stage Resources",
+        "explanation": "Each stage is implemented with its own dedicated hardware resources. This means that, for example, the 'fetch' stage can operate independently and concurrently with the 'execute' stage."
+      },
+      {
+        "step": 3,
+        "name": "Concurrent Operation Flow",
+        "explanation": "Once an instruction completes a stage, it moves to the next stage, freeing up the previous stage. This allows a new, independent instruction to enter the now-free stage in the very next clock cycle. Multiple instructions are thus 'in flight' simultaneously, each in a different stage of completion."
+      },
+      {
+        "step": 4,
+        "name": "Clock Cycle Synchronization",
+        "explanation": "All stages advance their operations synchronously at the rising or falling edge of a global clock signal. The clock period is determined by the slowest stage's delay plus latch overhead, ensuring all data is stable before the next stage begins processing."
+      }
+    ],
+    "formalization": {
+      "definition": "Instruction pipelining is a technique where multiple instructions are overlapped in execution by decomposing the instruction processing into a series of independent stages, allowing different stages to process different instructions concurrently.",
+      "equations": [],
+      "worked_trace": {
+        "setup": "Three independent operations I1-I3 traverse five ordered stages S1-S5, one stage per cycle.",
+        "steps": [
+          "Cycle 1: S1=I1.",
+          "Cycle 2: S1=I2, S2=I1.",
+          "Cycle 3: S1=I3, S2=I2, S3=I1.",
+          "Cycle 4: S2=I3, S3=I2, S4=I1.",
+          "Cycle 5: S3=I3, S4=I2, S5=I1; I1 completes at the end of the cycle.",
+          "Cycle 6: S4=I3, S5=I2; I2 completes at the end of the cycle.",
+          "Cycle 7: S5=I3; I3 completes at the end of the cycle."
+        ],
+        "result": "I1, I2, and I3 complete at the ends of cycles 5, 6, and 7 respectively; all three therefore complete in 7 cycles.",
+        "architectural_meaning": "Each operation still has five-cycle latency, while the filled machine completes adjacent operations one cycle apart."
+      }
+    },
+    "invariants": [
+      "Each stage processes only one instruction at a time.",
+      "Instructions flow through stages in a fixed, sequential order.",
+      "All stages operate synchronously with a common clock.",
+      "The clock period is set by the slowest stage's combinational delay plus latch overhead."
+    ],
+    "tradeoffs": [
+      {
+        "axis": "Per-operation latency vs. completion rate",
+        "gain": "For the synthetic five-stage machine, a long independent stream approaches one completed operation per cycle.",
+        "cost": "One operation still traverses five stages; overlap changes the completion rate, not the amount of ordered work it must visit.",
+        "decision_condition": "Use completion rate for sustained streams and latency for an isolated or short invocation; do not substitute one metric for the other."
+      },
+      {
+        "axis": "Stage balance vs. boundary cost",
+        "gain": "In the supplied partition, splitting the 310 ps stage lowers the clock period from 345 ps to 275 ps and raises ideal throughput.",
+        "cost": "The split adds a stage boundary. Its area and energy cost are not present in the timing evidence and must be measured separately.",
+        "decision_condition": "Split only after identifying the clock-setting stage, then evaluate timing and implementation cost as separate evidence."
+      },
+      {
+        "axis": "Available independence vs. stalls",
+        "gain": "Independent instructions can occupy otherwise idle stages; a compiler can schedule such instructions between a producer and consumer.",
+        "cost": "If the available independent work cannot cover the producer's latency, the dependent instruction cannot preserve the ideal initiation rate.",
+        "decision_condition": "Judge the mechanism against dependence distance and functional-unit latency, not against pipeline depth alone."
+      }
+    ],
+    "boundary_cases": [
+      {
+        "condition": "A consumer reaches execution before its producer is ready",
+        "consequence": "Without enough independent work between them, the consumer must wait and the ideal overlap develops an empty slot.",
+        "diagnostic": "Compare producer latency with the scheduled distance to its consumer, then inspect the occupancy trace where readiness first fails."
+      },
+      {
+        "condition": "Several speculative branches remain unresolved",
+        "consequence": "High branch frequency, clustered branches, and long resolution delays can leave multiple speculative branches pending and make branch speculation important for avoiding stalls.",
+        "diagnostic": "Measure branch frequency, clustering, resolution delay, and misprediction behavior rather than attributing every lost cycle to pipeline depth."
+      },
+      {
+        "condition": "Two operations require a resource that cannot accept both",
+        "consequence": "The resource's initiation capability, rather than the nominal stage schedule, limits how frequently new work can begin.",
+        "diagnostic": "Find the first cycle with competing requests. The source's ideal model avoids this boundary by assuming fully pipelined or replicated functional units."
+      }
+    ],
+    "system_connections": [
+      {
+        "layer": "CPU",
+        "connection": "A supplied superscalar example is four instructions wide and fifteen stages deep, so it may overlap sixty instructions, yet the text explicitly says it still requires high ILP. Dynamic scheduling dispatches work when operands and a suitable functional unit are ready.",
+        "why_it_matters": "Width and depth create capacity for overlap; operand readiness, resource availability, and workload ILP decide whether that capacity is used."
+      },
+      {
+        "layer": "compiler",
+        "connection": "Compiler scheduling searches for independent instructions and separates a dependent consumer from its producer by the producer's pipeline latency when enough ILP exists.",
+        "why_it_matters": "The compiler changes the occupancy schedule seen by the hardware; it cannot manufacture independence absent from the program."
+      }
+    ],
+    "common_misconceptions": [
+      {
+        "belief": "Overlap makes one instruction complete in fewer stages.",
+        "why_it_fails": "The executable trace keeps five-cycle latency for every operation while adjacent completions become one cycle apart.",
+        "replacement_model": "Track two quantities independently: traversal latency for one operation and initiation/completion interval for the stream."
+      },
+      {
+        "belief": "If one extra boundary improved throughput, every additional boundary will.",
+        "why_it_fails": "The supplied split helps because 310 ps was the clock-setting delay. After the split, 240 ps becomes the maximum; subdividing a nonmaximum stage would not lower that maximum, while boundary overhead remains.",
+        "replacement_model": "Recompute the maximum stage delay plus boundary overhead after each proposed partition. Stage count by itself predicts neither clock period nor useful throughput."
+      }
+    ]
+  },
+  "transfer_lab": [
+    {
+      "title": "The Design That Appears to Dominate",
+      "scenario": "Two stage partitions have already been validated. The original four-stage design has a 345 ps clock period and 1,380 ps single-operation latency. Splitting its 310 ps stage produces a five-stage design with a 275 ps clock period and 1,375 ps single-operation latency. Their ideal steady-state throughputs are about 2.90 and 3.64 billion operations per second respectively.",
+      "task": "Choose between the original and split designs first for a latency-sensitive short invocation and then for a throughput-oriented long stream. Does the supplied performance evidence give either workload a reason to choose the original design? Identify the additional measurement needed before claiming that the split design is globally better.",
+      "constraints": [
+        "Do not recompute the periods, latencies, or throughputs.",
+        "Separate conclusions supported by timing from conclusions about implementation cost."
+      ],
+      "required_measurement": "Measure a non-timing implementation cost such as energy per operation or added sequential-state area for both designs.",
+      "falsifying_observation": "A measured implementation cost large enough to outweigh the split design's timing benefit would falsify the claim that it is globally better.",
+      "truth_fact_ids": [
+        "pipe-f6",
+        "pipe-f7",
+        "pipe-f8"
+      ],
+      "solution": {
+        "reasoning": "On the supplied timing evidence, the split design wins both comparisons: 1,375 ps is slightly below 1,380 ps for one operation, and 3.64 billion operations per second exceeds 2.90 for a long stream. Therefore the original design has no timing-based advantage in this specific comparison. That does not establish global dominance: the extra stage boundary adds sequential state and clocked work whose area and energy were not measured.",
+        "tempting_wrong_path": "Assume that adding a stage must increase latency, or declare the split design universally superior from timing measurements alone.",
+        "answer_changes_if": "The decision can change when a measured implementation cost, rather than an invented timing value, dominates the design objective."
+      },
+      "lab_id": "t1"
+    },
+    {
+      "lab_id": "t2",
+      "title": "When a CPI Residual Pretends to Be a Cause",
+      "scenario": "A simulator estimates memory-generated stalls per instruction from cache miss rates and penalties, subtracts that estimate from measured CPI, and labels the residual pipeline stalls. The supplied CPI composition uses this procedure and notes that the residual contains all three hazard classes.",
+      "task": "Design a counterfactual experiment that tests whether the residual uniquely measures the causal cost of pipeline hazards rather than whatever the memory estimate did not explain.",
+      "constraints": [
+        "Change one stall-producing mechanism at a time.",
+        "Keep the instruction stream and measurement method fixed.",
+        "Use no invented CPI values."
+      ],
+      "required_measurement": "Measure total CPI, the estimated memory contribution, and the residual under baseline, ideal-memory, and ideal-hazard interventions.",
+      "falsifying_observation": "If changing only memory behavior also changes the residual hazard term, the original decomposition is not a unique causal attribution.",
+      "truth_fact_ids": [],
+      "solution": {
+        "reasoning": "The subtraction is an accounting decomposition, not by itself a causal proof. Run the same trace with memory stalls removed, then with one hazard class removed, and finally with both removed. Compare each individual CPI reduction with the joint reduction. A nonzero interaction means one stall source was masking or exposing another, so a single residual cannot uniquely assign cost.",
+        "tempting_wrong_path": "Treat the largest reported component as independently removable without testing whether another component changes with it.",
+        "answer_changes_if": "A simulator that records mutually exclusive critical-path causes per cycle supplies stronger attribution, but its classification still needs counterfactual validation."
+      }
+    }
+  ],
+  "research_frontier": [
+    {
+      "question": "Where should a designer place stage boundaries when logic partitioning changes clock period and branch behavior penalizes lost speculation?",
+      "tension": "The executable example proves that one bottleneck split can lower clock period. The source separately describes deeply pipelined processors with large branch-misprediction penalties. Neither observation alone chooses a partition.",
+      "why_existing_techniques_are_insufficient": "Static timing identifies the slowest stage but contains no workload control behavior. Predictor measurements expose control behavior but do not say how the logic should be repartitioned.",
+      "experiment": "Enumerate legal partitions of the same logic, obtain a clock period for each, and replay identical control-flow traces through each design. Record total execution time and its CPI components, then test whether the selected partition remains best on held-out traces.",
+      "success_metric": "A selection rule that predicts the lowest-execution-time legal partition on traces not used to construct the rule.",
+      "hardest_confounder": "Retiming may change both physical stage delays and the cycle at which a branch resolves, so the two effects cannot be varied independently without a careful experimental model."
+    },
+    {
+      "question": "Can a CPI decomposition uniquely attribute lost overlap when pipeline hazards and memory stalls interact?",
+      "tension": "The source computes memory-generated stalls and assigns the CPI residual to pipeline stalls, but a residual is not necessarily the counterfactual speedup from removing its labeled cause.",
+      "why_existing_techniques_are_insufficient": "An additive report does not reveal whether one stalled mechanism masked work that would otherwise have stalled on another mechanism.",
+      "experiment": "Use matched simulator runs that remove memory stalls, individual hazard classes, and combinations of both. Compare individual CPI reductions with joint reductions to measure interaction terms.",
+      "success_metric": "An attribution method whose predicted CPI change matches the measured change under held-out interventions.",
+      "hardest_confounder": "Removing one delay changes the schedule itself, which can expose new dependences or memory requests and thereby change the workload observed by downstream structures."
+    }
+  ],
+  "retention": {
+    "retrieval_trigger": "When you observe a system with high latency but unexpectedly high throughput, or when a performance bottleneck is identified as 'stalls' rather than 'slow operations' → think about how operations are overlapped and what prevents ideal overlap.",
+    "one_sentence_compression": "Pipelining improves instruction throughput by overlapping execution stages, allowing multiple instructions to be in flight concurrently, but individual instruction latency may not decrease and hazards can cause stalls.",
+    "delayed_probe": {
+      "delay_days": 4,
+      "changed_context": "A compiler must schedule a producer, its consumer, and several independent operations for a machine whose functional-unit latencies are known.",
+      "prompt": "Closed book: construct the scheduling rule that keeps the machine occupied without letting the consumer read an unavailable result. Then explain what symptom appears when the basic block contains too little independent work and name the first measurement you would inspect.",
+      "success_criteria": [
+        "Separates producer-consumer readiness from nominal issue order.",
+        "Uses independent work to cover producer latency when possible.",
+        "Predicts an empty slot or stall when available ILP is insufficient.",
+        "Inspects dependence distance, operand readiness, or stage occupancy."
+      ]
+    }
+  }
+}

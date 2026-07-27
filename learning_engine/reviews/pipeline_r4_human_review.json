@@ -1,0 +1,100 @@
+{
+  "verdict": "reject",
+  "blocking_issues": [
+    {
+      "category": "technical",
+      "severity": "blocking",
+      "location": "reveal.formalization.worked_trace",
+      "problem": "The trace says I1 enters S5 in cycle 5, then says it completes S5 in cycle 6, while the result says it completed at the end of cycle 5.",
+      "analysis": "This is internally contradictory. The executable schedule is authoritative: I1, I2, and I3 occupy S5 and complete at the ends of cycles 5, 6, and 7.",
+      "required_fix": "Use the kernel-owned canonical worked trace without paraphrasing its cycle boundaries.",
+      "source_span_ids": []
+    },
+    {
+      "category": "learning",
+      "severity": "blocking",
+      "location": "transfer_lab[0]",
+      "problem": "The lab repeats evidence beat e4's exact calculation instead of transferring the mechanism.",
+      "analysis": "Recalculation in the same representation tests short-term repetition, not architectural transfer.",
+      "required_fix": "Reuse the two computed configurations, but ask the learner to choose and defend a design for a latency-sensitive short burst versus a throughput-oriented long stream. Do not ask for the e4 calculations again.",
+      "source_span_ids": []
+    },
+    {
+      "category": "technical",
+      "severity": "blocking",
+      "location": "transfer_lab[1]",
+      "problem": "The lab invents ideal, memory-stall, hazard-stall, and total CPI values outside executable truth.",
+      "analysis": "The source supports qualitative CPI decomposition and the Arm A53 attribution method, not the synthetic values in the draft.",
+      "required_fix": "Make this a qualitative causal-attribution design review: memory stalls are estimated from miss rates and penalties, the residual is labeled pipeline stalls, and the learner must design an intervention that tests whether the attribution is unique. Use no numeric scenario.",
+      "source_span_ids": [
+        "hp7-ch03-p003-span-008",
+        "hp7-ch03-p087-span-004"
+      ]
+    },
+    {
+      "category": "technical",
+      "severity": "major",
+      "location": "reveal.boundary_cases[0]",
+      "problem": "The draft groups RAW, WAR, and WAW together as dependences that force a basic pipeline stall.",
+      "analysis": "A true read-after-write dependence can require waiting or bypassing. WAR and WAW are name dependences that become relevant with reordering; they are not the same causal boundary in this introductory overlap case.",
+      "required_fix": "Keep the basic boundary on RAW readiness. Do not mention WAR or WAW in this case.",
+      "source_span_ids": [
+        "hp7-ch03-p012-span-003"
+      ]
+    },
+    {
+      "category": "voice",
+      "severity": "major",
+      "location": "reveal.common_misconceptions[0]",
+      "problem": "The replacement model uses an assembly-line analogy explicitly forbidden by the reader contract.",
+      "analysis": "The timing table already supplies a precise model; the analogy weakens rather than improves it.",
+      "required_fix": "Use stage occupancy, latency, initiation interval, and completion rate directly.",
+      "source_span_ids": []
+    },
+    {
+      "category": "grounding",
+      "severity": "major",
+      "location": "reveal and system connections",
+      "problem": "Several claims exceed the supplied evidence, including clock scaling becoming insufficient and performance being orders of magnitude lower without pipelining.",
+      "analysis": "These may be broadly plausible, but the private source pack does not ground them.",
+      "required_fix": "Delete unsupported flourishes. Keep each factual premise no broader than its cited span or executable fact.",
+      "source_span_ids": []
+    },
+    {
+      "category": "grounding",
+      "severity": "major",
+      "location": "research_frontier and retention.delayed_probe",
+      "problem": "The draft invents fixed pipeline-depth sweeps, a 30-stage 3 GHz GPU, increasing core counts, and other quantitative premises absent from the pack.",
+      "analysis": "A research experiment may be novel, but its stated machine parameters still need provenance under this compiler contract.",
+      "required_fix": "Keep the two blueprint research questions qualitative and implementable without arbitrary parameters. Make the delayed probe a changed representation using a compiler schedule or an unlabeled stage-occupancy symptom, with no invented numeric hardware configuration.",
+      "source_span_ids": [
+        "hp7-ch03-p012-span-003",
+        "hp7-ch03-p033-span-004",
+        "hp7-ch03-p064-span-004",
+        "hp7-ch03-p087-span-004"
+      ]
+    }
+  ],
+  "strengths_to_preserve": [
+    "The four-beat reveal order now makes the learner calculate before receiving each answer.",
+    "The opening and partial occupancy table are precise and solvable.",
+    "The latency-versus-throughput distinction is central rather than incidental.",
+    "The second research question about non-additive CPI attribution is worth preserving."
+  ],
+  "revision_brief": [
+    "Follow the new executable experience blueprint exactly.",
+    "Preserve the partial schedule, calculation timing, and design gate.",
+    "Use the kernel-owned worked trace and only kernel-owned synthetic numbers.",
+    "Turn t1 into a workload-objective design choice and t2 into qualitative causal attribution.",
+    "Remove analogies, unsupported historical/product claims, WAR/WAW, and invented probe parameters.",
+    "Write research questions as falsifiable experimental designs, not speculative feature proposals."
+  ],
+  "scores": {
+    "target_alignment": 5,
+    "solvability": 5,
+    "technical_correctness": 2,
+    "grounding": 2,
+    "learning_quality": 3,
+    "authored_voice": 3
+  }
+}
