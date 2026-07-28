@@ -173,19 +173,19 @@ def main() -> None:
     case_id = pre["case_id"]
     bodies = {
         "": (
-            (ROOT / "learning_lab" / "index.html").read_text(),
+            (ROOT / "miniapp" / "learning" / "index.html").read_text(),
             "text/html",
         ),
         "index.html": (
-            (ROOT / "learning_lab" / "index.html").read_text(),
+            (ROOT / "miniapp" / "learning" / "index.html").read_text(),
             "text/html",
         ),
         "style.css": (
-            (ROOT / "learning_lab" / "style.css").read_text(),
+            (ROOT / "miniapp" / "learning" / "style.css").read_text(),
             "text/css",
         ),
         "app.js": (
-            (ROOT / "learning_lab" / "app.js").read_text(),
+            (ROOT / "miniapp" / "learning" / "app.js").read_text(),
             "application/javascript",
         ),
         "cases/index.json": (json.dumps(index), "application/json"),

@@ -1,0 +1,32 @@
+{
+  "schema_version": "1.1.0",
+  "delivery_surface": "silicon-radar-learning",
+  "cases": [
+    {
+      "case_id": "case-cd1202f44ac8-r006",
+      "case_revision": 6,
+      "experience_type": "frontier",
+      "pre_url": "cases/case-cd1202f44ac8-r006/pre.json",
+      "reveal_url": "cases/case-cd1202f44ac8-r006/reveal.json",
+      "preview_status": "ready_for_reader",
+      "human_review": {
+        "decision": "ready_for_reader",
+        "reason": "Previously approved executable-truth and expert-curated case; reader payload republished with private citation markers removed.",
+        "reviewed_at": "2026-07-28T10:15:29.645034+00:00"
+      }
+    },
+    {
+      "case_id": "case-2e0deed57c82-r003",
+      "case_revision": 3,
+      "experience_type": "frontier",
+      "pre_url": "cases/case-2e0deed57c82-r003/pre.json",
+      "reveal_url": "cases/case-2e0deed57c82-r003/reveal.json",
+      "preview_status": "ready_for_reader",
+      "human_review": {
+        "decision": "ready_for_reader",
+        "reason": "Source-bounded expert-curated case; reader payload republished with private citation markers removed.",
+        "reviewed_at": "2026-07-28T10:15:29.732446+00:00"
+      }
+    }
+  ]
+}

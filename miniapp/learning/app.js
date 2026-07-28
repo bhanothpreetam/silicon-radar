@@ -1,5 +1,7 @@
 "use strict";
 
+/* Multi-case learning runtime hosted at the Silicon Radar /learning path. */
+
 const app = document.querySelector("#app");
 const statusText = document.querySelector("#status");
 const nextCaseButton = document.querySelector("#next-case");
@@ -8,6 +10,7 @@ const responseTemplate = document.querySelector("#response-template");
 
 const STORAGE = {
   deck: "radar.learning.preview.deck.v1",
+  activeCase: "radar.learning.preview.active-case.v1",
   attempts: "radar.learning.preview.attempts.v1",
   progress: "radar.learning.preview.progress.v1",
 };
@@ -197,6 +200,34 @@ function drawRecord() {
   return caseIndex.find((record) => record.case_id === selectedId);
 }
 
+function dueReviewRecord() {
+  const progress = progressMap();
+  const due = caseIndex
+    .map((record) => ({
+      record,
+      state: progress[record.case_id],
+    }))
+    .filter(({state}) => (
+      state?.stage === "completed"
+      && state.review_due_at
+      && !state.review_completed_at
+      && Date.parse(state.review_due_at) <= Date.now()
+    ))
+    .sort((left, right) => (
+      Date.parse(left.state.review_due_at) - Date.parse(right.state.review_due_at)
+    ));
+  return due[0]?.record || null;
+}
+
+function initialRecord() {
+  const due = dueReviewRecord();
+  if (due) return due;
+
+  const activeId = localStorage.getItem(STORAGE.activeCase);
+  const active = caseIndex.find((record) => record.case_id === activeId);
+  return active || drawRecord();
+}
+
 function recordEvent(eventType, payload = {}) {
   sequence += 1;
   const event = {
@@ -241,6 +272,7 @@ function primaryButton(label) {
 
 async function loadCase(record) {
   activeRecord = record;
+  localStorage.setItem(STORAGE.activeCase, record.case_id);
   const response = await fetch(`./${record.pre_url}`, {cache: "no-store"});
   if (!response.ok) throw new Error(`Could not load ${record.pre_url}`);
   activeCase = await response.json();
@@ -811,7 +843,7 @@ async function start() {
       || (reviewMode && record.preview_status === "awaiting_human_review")
     ));
     if (!caseIndex.length) throw new Error("No compiled cases are available yet.");
-    await loadCase(drawRecord());
+    await loadCase(initialRecord());
   } catch (error) {
     app.replaceChildren();
     const empty = element("section", "empty-panel");
@@ -832,6 +864,7 @@ nextCaseButton.addEventListener("click", async () => {
   if (caseIndex.length === 1 && activeCase) {
     clearProgress(activeCase.case_id);
   }
+  localStorage.removeItem(STORAGE.activeCase);
   app.className = "";
   await loadCase(drawRecord());
   window.scrollTo({top: 0, behavior: "smooth"});

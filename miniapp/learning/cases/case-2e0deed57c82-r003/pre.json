@@ -1,0 +1,78 @@
+{
+  "case_id": "case-2e0deed57c82-r003",
+  "case_revision": 3,
+  "experience_type": "frontier",
+  "corpus_version": "hp7-ch2-ch3-v0.1",
+  "investigation_mode": "performance counter anomaly with array access patterns",
+  "pre_reveal": {
+    "mystery_title": "The Unseen Order of Memory Access",
+    "opening": {
+      "scene": "Your team is investigating a performance anomaly in a critical data processing pipeline. Two C functions, operating on 2D integer arrays, exhibit vastly different L1 data cache miss rates despite similar overall data sizes. The system has a 32 KiB L1 data cache. Arrays are stored in row-major order.",
+      "observations": [
+        "A loop accessing array `a` with `a[i][j]` (where `j` is the inner loop) results in 150 L1 data cache misses.",
+        "A loop accessing array `b` with `b[j][0]` (where `j` is the inner loop) results in 101 L1 data cache misses, ignoring potential conflict misses."
+      ],
+      "constraints": [
+        "This bounded exercise uses 8-byte cache blocks and 4-byte integers.",
+        "Array a has dimensions [3][100]; array b has dimensions [101][100].",
+        "Both arrays use row-major layout.",
+        "Count only the blocks touched by the shown references; assume those 101 b blocks remain resident between the three passes.",
+        "Ignore conflict misses, matching the source exercise."
+      ],
+      "central_question": "What property of the reference sequence—not the array's declared size—explains why one trace misses 150 times and the other only 101?",
+      "commitment_prompt": "Formulate an initial hypothesis explaining the difference in miss rates. What property of memory access do you think is at play?",
+      "confidence_prompt": "How confident are you in your initial hypothesis (0-100)?"
+    },
+    "evidence_beats": [
+      {
+        "beat_id": "e1",
+        "title": "Analyzing Array 'a' Access",
+        "evidence": "Consider the loop accessing array `a`: \n```c\nfor (int i = 0; i < 3; i++) {\n    for (int j = 0; j < 100; j++) {\n        // Access a[i][j]\n    }\n}\n```\nThis loop accesses elements `a[i][0], a[i][1], ..., a[i][99]` sequentially for each row `i`. The observed 150 misses for array `a` implies that for each row, approximately half of the accesses result in a miss. Given an 8-byte block size and 4-byte integers, how many integers fit into one cache block? How many cache blocks are needed to store one full row of array `a`?",
+        "question": "Based on the cache block size and integer size, and the observed miss count for array `a`, explain how the sequential access pattern `a[i][j]` interacts with the cache to produce 150 misses.",
+        "response_mode": "explain",
+        "truth_fact_ids": [],
+        "hints": [
+          "How many 4-byte integers fit into an 8-byte cache block?",
+          "If `a[i][j]` is accessed, which other elements of `a` are brought into the cache along with it?",
+          "For a row of 100 integers, how many cache blocks are needed? How many misses would this cause if each block is fetched once?"
+        ]
+      },
+      {
+        "beat_id": "e2",
+        "title": "Analyzing Array 'b' Access",
+        "evidence": "Now consider the loop accessing array `b`: \n```c\nfor (int i = 0; i < 3; i++) {\n    for (int j = 0; j < 101; j++) {\n        // Access b[j][0]\n    }\n}\n```\nThis loop accesses `b[j][0]` for `j` from 0 to 100, and this entire `j` loop is repeated 3 times for `i`. The total misses for array `b` are 101. Array `b` is stored in row-major order. How does the memory address of `b[j][0]` relate to `b[j+1][0]`? How does it relate to `b[j][1]`?",
+        "question": "The access pattern for `b` is `b[j][0]`. Given that `b` is row-major and the cache block size is 8 bytes, explain why this pattern leads to 101 misses, and how it differs from the `a[i][j]` pattern.",
+        "response_mode": "explain",
+        "truth_fact_ids": [],
+        "hints": [
+          "In row-major order, are `b[j][0]` and `b[j+1][0]` contiguous in memory, or are they separated by a full row?",
+          "If `b[j][0]` is accessed, what other elements are brought into the 8-byte cache block?",
+          "Consider the effect of the outer `i` loop: how many times is `b[j][0]` accessed *after* its first fetch for a given `j`?"
+        ]
+      },
+      {
+        "beat_id": "e3",
+        "title": "Two predictors, one cache",
+        "evidence": "For a, the first reference to each 8-byte block misses; the immediately following integer is already present. For b, references jump 400 bytes between rows during one pass, yet the next two passes over the same 101 elements hit. A mechanism that predicts only the next address explains the first trace but not the second. A mechanism that remembers only the last address explains the second but not the first.",
+        "question": "State the two independent predictions the cache is exploiting. Then construct one short reference sequence that satisfies the first prediction but defeats the second, and another that does the reverse.",
+        "response_mode": "design",
+        "truth_fact_ids": [],
+        "hints": [
+          "Write the byte-address deltas for four consecutive references in each trace; do not name a cache policy.",
+          "Ask whether the useful word is one already referenced or one merely carried in by the same block.",
+          "Your two counterexamples should change only recurrence in one case and adjacency in the other."
+        ]
+      }
+    ],
+    "design_gate": {
+      "prompt": "Design the two predictions a memory hierarchy may safely gamble on. For each, identify what state or transfer granularity lets a cache exploit it, and give a falsifying access trace. Your design must explain both 150 and 101 misses without referring to total array size.",
+      "required_elements": [
+        "A prediction about reuse of an already referenced word",
+        "A separate prediction about untouched words carried in the same block",
+        "The cache action that exploits each prediction",
+        "One adversarial reference trace for each prediction"
+      ],
+      "confidence_prompt": "Confidence that both predictions are independent"
+    }
+  }
+}

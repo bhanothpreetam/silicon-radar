@@ -531,7 +531,11 @@ def repair_case(
 
 
 _INTERNAL_CITATION = re.compile(
-    r"\s*\[(?:(?:c\d+|pipe-f\d+)(?:\s*,\s*)?)+\]"
+    r"\s*(?:"
+    r"\[(?:(?:c\d+|pipe-f\d+)(?:\s*,\s*)?)+\]"
+    r"|"
+    r"\((?:(?:c\d+|pipe-f\d+)(?:\s*,\s*)?)+\)"
+    r")"
 )
 
 

@@ -31,7 +31,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--public-output",
         type=Path,
-        default=ROOT / "learning_lab" / "cases",
+        default=ROOT / "miniapp" / "learning" / "cases",
     )
     return parser.parse_args()
 

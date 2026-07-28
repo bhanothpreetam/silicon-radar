@@ -1,3 +1,4 @@
+/* Learning surface deployed inside the existing Silicon Radar Mini App. */
 :root {
   color-scheme: dark;
   --bg: #080b0f;
@@ -82,6 +83,7 @@ input {
   color: var(--muted);
   padding: 8px 13px;
   cursor: pointer;
+  text-decoration: none;
 }
 
 .loading-panel,

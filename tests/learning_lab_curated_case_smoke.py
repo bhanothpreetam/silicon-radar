@@ -11,7 +11,7 @@ from playwright.sync_api import sync_playwright
 
 
 ROOT = Path(__file__).resolve().parents[1]
-LAB = ROOT / "learning_lab"
+LAB = ROOT / "miniapp" / "learning"
 
 
 def main() -> None:
@@ -26,6 +26,15 @@ def main() -> None:
     record = candidates[0]
     case_id = record["case_id"]
     query = "?review=1" if record["preview_status"] == "awaiting_human_review" else ""
+    other_records = [
+        item
+        for item in index["cases"]
+        if item["case_id"] != case_id
+        and item["preview_status"] == "ready_for_reader"
+    ]
+    assert other_records, "The curated smoke test requires a second reader case"
+    next_record = other_records[0]
+    next_pre = json.loads((LAB / next_record["pre_url"]).read_text())
 
     paths = {
         "": (LAB / "index.html", "text/html"),
@@ -33,9 +42,16 @@ def main() -> None:
         "style.css": (LAB / "style.css", "text/css"),
         "app.js": (LAB / "app.js", "application/javascript"),
         "cases/index.json": (LAB / "cases" / "index.json", "application/json"),
-        record["pre_url"]: (LAB / record["pre_url"], "application/json"),
-        record["reveal_url"]: (LAB / record["reveal_url"], "application/json"),
     }
+    for indexed_record in index["cases"]:
+        paths[indexed_record["pre_url"]] = (
+            LAB / indexed_record["pre_url"],
+            "application/json",
+        )
+        paths[indexed_record["reveal_url"]] = (
+            LAB / indexed_record["reveal_url"],
+            "application/json",
+        )
     requested: list[str] = []
 
     def fulfill(route):
@@ -53,8 +69,21 @@ def main() -> None:
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
         page = browser.new_page(viewport={"width": 390, "height": 844})
+        page.set_default_timeout(10_000)
         page.route("**/*", fulfill)
         page.on("request", lambda request: requested.append(request.url))
+        page.add_init_script(
+            script=(
+                "if (!localStorage.getItem('radar.test.deck-seeded')) {"
+                "localStorage.clear();"
+                "localStorage.setItem("
+                "'radar.learning.preview.deck.v1',"
+                f"JSON.stringify({json.dumps([case_id, next_record['case_id']])})"
+                ");"
+                "localStorage.setItem('radar.test.deck-seeded', '1');"
+                "}"
+            )
+        )
         page.goto(f"http://localhost/{query}", wait_until="networkidle")
 
         assert page.locator("h1").inner_text() == "The Overlapping Operations Anomaly"
@@ -93,6 +122,7 @@ def main() -> None:
         assert any(url.endswith("/reveal.json") for url in requested)
         body = page.locator("body").inner_text()
         assert "[c1]" not in body
+        assert "(c1)" not in body
         assert "[pipe-f" not in body
         assert "The Design That Appears to Dominate" in body
         assert "When a CPI Residual Pretends to Be a Cause" in body
@@ -157,8 +187,30 @@ def main() -> None:
         assert "case_completed" in event_types
         assert "delayed_retrieval_submitted" in event_types
 
+        page.get_by_role("button", name="Next case").click()
+        page.wait_for_function(
+            "(title) => document.querySelector('h1')?.textContent === title",
+            arg=next_pre["pre_reveal"]["mystery_title"],
+        )
+        assert page.locator("h1").inner_text() == next_pre["pre_reveal"]["mystery_title"]
+        page.reload(wait_until="networkidle")
+        assert page.locator("h1").inner_text() == next_pre["pre_reveal"]["mystery_title"]
+
         normal = browser.new_page(viewport={"width": 390, "height": 844})
+        normal.set_default_timeout(10_000)
         normal.route("**/*", fulfill)
+        normal.add_init_script(
+            script=(
+                "if (!localStorage.getItem('radar.test.deck-seeded')) {"
+                "localStorage.clear();"
+                "localStorage.setItem("
+                "'radar.learning.preview.deck.v1',"
+                f"JSON.stringify({json.dumps([case_id, next_record['case_id']])})"
+                ");"
+                "localStorage.setItem('radar.test.deck-seeded', '1');"
+                "}"
+            )
+        )
         normal.goto("http://localhost/", wait_until="networkidle")
         assert normal.locator("h1").inner_text() == "The Overlapping Operations Anomaly"
         assert "Paged address translation" not in normal.locator("body").inner_text()

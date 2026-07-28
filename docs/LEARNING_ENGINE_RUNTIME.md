@@ -1,8 +1,9 @@
 # Radar Learning Engine — First Runtime Slice
 
-The runtime is isolated from the current Mini App. It turns the normalized
-private corpus into a prerequisite-gated, mystery-first experience without
-altering the production feed.
+The runtime is isolated from the feed logic but is packaged inside the current
+Mini App deployment at `/learning/`. It turns the normalized private corpus
+into a prerequisite-gated, mystery-first experience without coupling textbook
+authoring to the production news pipeline.
 
 ## Implemented flow
 
@@ -79,10 +80,10 @@ selection, validation, UI, and synthetic browser test require no such transfer.
 After at least one real case has been generated:
 
 ```bash
-python3 -m http.server 8090 --directory learning_lab
+python3 -m http.server 8090 --directory miniapp
 ```
 
-Then open `http://localhost:8090`.
+Then open `http://localhost:8090/learning/`.
 
 The browser initially fetches only `pre.json`. It records hypotheses,
 confidence, hints, evidence-driven revisions, the invented mechanism, transfer
