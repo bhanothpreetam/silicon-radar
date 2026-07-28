@@ -86,11 +86,20 @@ Then open `http://localhost:8090`.
 
 The browser initially fetches only `pre.json`. It records hypotheses,
 confidence, hints, evidence-driven revisions, the invented mechanism, transfer
-responses, and completion as attempt events in local storage. `reveal.json` is
-not requested until the learner commits at the design gate.
+responses, and completion as attempt events in local storage. Drafts and the
+current stage are also persisted, so an interrupted investigation resumes at
+the exact evidence, design, reveal, or completion state. `reveal.json` is not
+requested until the learner commits at the design gate.
 
-The generated cases, evaluator payloads, source packs, and learner/deck state
-are ignored by Git.
+Completion schedules the case's closed-book delayed probe. When its due time
+arrives, the probe replaces the normal reveal until the learner commits a
+reconstruction. The Export control downloads progress and the immutable event
+trail as JSON for personal analysis. None of these learner responses leave the
+browser in the static pilot.
+
+Private generated drafts, evaluator payloads, source packs, and learner/deck
+state are ignored by Git. Human-approved `pre.json` and `reveal.json` reader
+payloads are versioned so a static deployment cannot silently omit its cases.
 
 ## Validation
 
@@ -113,7 +122,11 @@ The browser test verifies:
 - the learner must submit an opening hypothesis;
 - all evidence beats require a response;
 - the design gate precedes the title;
-- attempt events are recorded in sequence.
+- attempt events are recorded in sequence;
+- reload resumes the exact investigation stage;
+- submitted transfer reasoning is restored;
+- the delayed closed-book probe appears when due;
+- browser-local history exports as JSON.
 
 ## Not implemented yet
 
@@ -123,7 +136,7 @@ The browser test verifies:
 - Cold Probe and Bridge renderers;
 - persistent server-side learner state;
 - Supabase schema and production APIs;
-- nightly compilation and public deployment.
+- nightly compilation.
 
 Those should follow only after the first generated cases pass human review for
 technical accuracy, mystery solvability, authored voice, question timing,

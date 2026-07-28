@@ -75,6 +75,9 @@ def main() -> None:
                 f"My revised model for beat {beat} preserves stage exclusivity and timing."
             )
             page.locator(".primary-button").click()
+            if beat == 2:
+                page.reload(wait_until="networkidle")
+                assert "Evidence 3 of 4" in page.locator("#status").inner_text()
 
         assert page.locator("#status").inner_text() == "Build the missing mechanism."
         page.locator("textarea").fill(
@@ -95,6 +98,48 @@ def main() -> None:
         assert "When a CPI Residual Pretends to Be a Cause" in body
         assert "Can a CPI decomposition uniquely attribute lost overlap" in body
 
+        first_transfer = page.locator(".transfer-card").first
+        first_transfer.locator("textarea").fill(
+            "The split wins the supplied timing objectives, but energy and state area "
+            "must be measured before claiming global dominance."
+        )
+        first_transfer.get_by_role("button", name="Commit and compare").click()
+        assert first_transfer.locator(".solution").count() == 1
+        page.reload(wait_until="networkidle")
+        assert page.locator(".transfer-card").first.locator(".solution").count() == 1
+
+        page.get_by_role("button", name="Close this investigation").click()
+        page.evaluate(
+            """
+            (caseId) => {
+              const key = 'radar.learning.preview.progress.v1';
+              const progress = JSON.parse(localStorage.getItem(key));
+              progress[caseId].review_due_at = new Date(0).toISOString();
+              localStorage.setItem(key, JSON.stringify(progress));
+            }
+            """,
+            case_id,
+        )
+        page.reload(wait_until="networkidle")
+        assert page.locator("h1").inner_text() == "Can the mechanism return on demand?"
+        page.locator("textarea").fill(
+            "Schedule independent work between producer and consumer, preserve "
+            "operand readiness, and expect an empty slot when available ILP is insufficient."
+        )
+        page.get_by_role(
+            "button",
+            name="Commit closed-book reconstruction",
+        ).click()
+        delayed_body = page.locator("body").inner_text()
+        assert "self-check criteria" in delayed_body.lower(), delayed_body
+
+        with page.expect_download() as download_info:
+            page.get_by_role("button", name="Export").click()
+        download = download_info.value
+        exported = json.loads(Path(download.path()).read_text(encoding="utf-8"))
+        assert exported["schema_version"] == "radar-learning-export-v1"
+        assert case_id in exported["progress"]
+
         events = page.evaluate(
             """
             (caseId) =>
@@ -108,6 +153,9 @@ def main() -> None:
         assert event_types.count("model_revised") == 4
         assert "mechanism_proposed" in event_types
         assert "title_revealed" in event_types
+        assert "transfer_submitted" in event_types
+        assert "case_completed" in event_types
+        assert "delayed_retrieval_submitted" in event_types
 
         normal = browser.new_page(viewport={"width": 390, "height": 844})
         normal.route("**/*", fulfill)

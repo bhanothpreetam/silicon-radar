@@ -3,16 +3,19 @@
 const app = document.querySelector("#app");
 const statusText = document.querySelector("#status");
 const nextCaseButton = document.querySelector("#next-case");
+const exportDataButton = document.querySelector("#export-data");
 const responseTemplate = document.querySelector("#response-template");
 
 const STORAGE = {
   deck: "radar.learning.preview.deck.v1",
   attempts: "radar.learning.preview.attempts.v1",
+  progress: "radar.learning.preview.progress.v1",
 };
 
 let caseIndex = [];
 let activeRecord = null;
 let activeCase = null;
+let currentProgress = null;
 let attemptId = null;
 let sequence = 0;
 
@@ -95,6 +98,78 @@ function list(parent, values, className, itemClass = "") {
   return container;
 }
 
+function readStored(key, fallback) {
+  try {
+    return JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback));
+  } catch {
+    return fallback;
+  }
+}
+
+function progressMap() {
+  return readStored(STORAGE.progress, {});
+}
+
+function persistProgress(patch = {}) {
+  if (!activeCase || !currentProgress) return;
+  currentProgress = {
+    ...currentProgress,
+    ...patch,
+    case_id: activeCase.case_id,
+    case_revision: activeCase.case_revision,
+    attempt_id: attemptId,
+    sequence,
+    updated_at: new Date().toISOString(),
+  };
+  const all = progressMap();
+  all[activeCase.case_id] = currentProgress;
+  localStorage.setItem(STORAGE.progress, JSON.stringify(all));
+}
+
+function clearProgress(caseId) {
+  const all = progressMap();
+  delete all[caseId];
+  localStorage.setItem(STORAGE.progress, JSON.stringify(all));
+}
+
+function setResponse(path, value) {
+  const responses = currentProgress.responses || {};
+  persistProgress({
+    responses: {
+      ...responses,
+      [path]: value,
+    },
+  });
+}
+
+function storedResponse(path) {
+  return (currentProgress?.responses || {})[path] || null;
+}
+
+function fillResponse(response, saved) {
+  if (!saved) return;
+  response.textarea.value = saved.response || "";
+  response.slider.value = String(saved.confidence ?? 50);
+  response.slider.dispatchEvent(new Event("input"));
+}
+
+function reviewIsDue() {
+  return Boolean(
+    currentProgress?.stage === "completed"
+    && currentProgress.review_due_at
+    && !currentProgress.review_completed_at
+    && Date.parse(currentProgress.review_due_at) <= Date.now()
+  );
+}
+
+function formatReviewDate(value) {
+  if (!value) return "not scheduled";
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
 function randomIndex(length) {
   const values = new Uint32Array(1);
   crypto.getRandomValues(values);
@@ -135,14 +210,10 @@ function recordEvent(eventType, payload = {}) {
     occurred_at: new Date().toISOString(),
     payload,
   };
-  let events = [];
-  try {
-    events = JSON.parse(localStorage.getItem(STORAGE.attempts) || "[]");
-  } catch {
-    events = [];
-  }
+  const events = readStored(STORAGE.attempts, []);
   events.push(event);
   localStorage.setItem(STORAGE.attempts, JSON.stringify(events.slice(-1000)));
+  if (currentProgress) persistProgress();
 }
 
 function responseBlock(prompt, confidencePrompt) {
@@ -173,14 +244,53 @@ async function loadCase(record) {
   const response = await fetch(`./${record.pre_url}`, {cache: "no-store"});
   if (!response.ok) throw new Error(`Could not load ${record.pre_url}`);
   activeCase = await response.json();
-  attemptId = crypto.randomUUID();
-  sequence = 0;
+  const saved = progressMap()[activeCase.case_id];
+  const canResume = saved?.case_revision === activeCase.case_revision;
+  if (canResume) {
+    currentProgress = saved;
+    attemptId = saved.attempt_id;
+    sequence = Number(saved.sequence || 0);
+  } else {
+    attemptId = crypto.randomUUID();
+    sequence = 0;
+    currentProgress = {
+      case_id: activeCase.case_id,
+      case_revision: activeCase.case_revision,
+      attempt_id: attemptId,
+      sequence,
+      stage: "opening",
+      evidence_index: 0,
+      responses: {},
+      started_at: new Date().toISOString(),
+    };
+    persistProgress();
+    recordEvent("case_started", {
+      experience_type: activeCase.experience_type,
+      investigation_mode: activeCase.investigation_mode,
+    });
+  }
   nextCaseButton.hidden = true;
-  recordEvent("case_started", {
-    experience_type: activeCase.experience_type,
-    investigation_mode: activeCase.investigation_mode,
-  });
-  renderOpening();
+  nextCaseButton.textContent = caseIndex.length > 1 ? "Next case" : "Restart case";
+  await resumeCase();
+}
+
+async function resumeCase() {
+  const stage = currentProgress?.stage || "opening";
+  if (stage === "opening") {
+    renderOpening();
+  } else if (stage === "evidence") {
+    renderEvidenceBeat(Number(currentProgress.evidence_index || 0));
+  } else if (stage === "design") {
+    renderDesignGate();
+  } else if (stage === "intermission") {
+    renderIntermission();
+  } else if (stage === "reveal" || stage === "completed") {
+    const payload = await fetchRevealPayload();
+    if (reviewIsDue()) renderDelayedProbe(payload);
+    else renderReveal(payload);
+  } else {
+    renderOpening();
+  }
 }
 
 function renderOpening() {
@@ -205,21 +315,43 @@ function renderOpening() {
     opening.commitment_prompt,
     opening.confidence_prompt,
   );
+  fillResponse(response, storedResponse("opening"));
   app.append(response.fragment);
   const commit = primaryButton("Commit this model");
-  commit.disabled = true;
+  commit.disabled = response.textarea.value.trim().length < 12;
   response.textarea.addEventListener("input", () => {
     commit.disabled = response.textarea.value.trim().length < 12;
+    setResponse("opening", {
+      response: response.textarea.value,
+      confidence: Number(response.slider.value),
+    });
+  });
+  response.slider.addEventListener("input", () => {
+    setResponse("opening", {
+      response: response.textarea.value,
+      confidence: Number(response.slider.value),
+    });
   });
   commit.addEventListener("click", () => {
-    recordEvent("hypothesis_committed", {
+    const saved = {
       response: response.textarea.value.trim(),
       confidence: Number(response.slider.value),
+    };
+    recordEvent("hypothesis_committed", {
+      ...saved,
       stage: "opening",
     });
+    setResponse("opening", saved);
+    persistProgress({stage: "evidence", evidence_index: 0});
     renderEvidenceBeat(0);
   });
   app.append(commit);
+  addText(
+    app,
+    "p",
+    "privacy-note",
+    "Pilot mode: your writing stays in this browser unless you export it.",
+  );
 }
 
 function renderEvidenceBeat(index) {
@@ -239,8 +371,14 @@ function renderEvidenceBeat(index) {
   addText(section, "p", "question", beat.question);
 
   const hints = element("div", "hint-stack");
-  let hintIndex = 0;
+  const responseKey = `beat:${beat.beat_id}`;
+  const savedBeat = storedResponse(responseKey);
+  let hintIndex = Number(savedBeat?.hints_used || 0);
+  for (const hint of (beat.hints || []).slice(0, hintIndex)) {
+    hints.append(element("div", "hint", hint));
+  }
   const hintButton = element("button", "hint-button", "Use one hint");
+  hintButton.disabled = hintIndex >= (beat.hints || []).length;
   hintButton.addEventListener("click", () => {
     const hint = (beat.hints || [])[hintIndex];
     if (!hint) return;
@@ -250,27 +388,56 @@ function renderEvidenceBeat(index) {
       beat_id: beat.beat_id,
       hint_depth: hintIndex,
     });
+    setResponse(responseKey, {
+      response: storedResponse(responseKey)?.response || "",
+      confidence: storedResponse(responseKey)?.confidence ?? 50,
+      hints_used: hintIndex,
+    });
     if (hintIndex >= beat.hints.length) hintButton.disabled = true;
   });
   section.append(hintButton, hints);
 
-  const response = responseBlock(beat.question, "Confidence");
+  const response = responseBlock("Your revised model", "Confidence");
+  fillResponse(response, savedBeat);
   section.append(response.fragment);
   const commit = primaryButton(
     index === beats.length - 1 ? "Face the design constraint" : "Release next evidence",
   );
-  commit.disabled = true;
+  commit.disabled = response.textarea.value.trim().length < 10;
   response.textarea.addEventListener("input", () => {
     commit.disabled = response.textarea.value.trim().length < 10;
-  });
-  commit.addEventListener("click", () => {
-    recordEvent("model_revised", {
-      beat_id: beat.beat_id,
-      response: response.textarea.value.trim(),
+    setResponse(responseKey, {
+      response: response.textarea.value,
       confidence: Number(response.slider.value),
       hints_used: hintIndex,
     });
-    renderEvidenceBeat(index + 1);
+  });
+  response.slider.addEventListener("input", () => {
+    setResponse(responseKey, {
+      response: response.textarea.value,
+      confidence: Number(response.slider.value),
+      hints_used: hintIndex,
+    });
+  });
+  commit.addEventListener("click", () => {
+    const saved = {
+      response: response.textarea.value.trim(),
+      confidence: Number(response.slider.value),
+      hints_used: hintIndex,
+    };
+    recordEvent("model_revised", {
+      beat_id: beat.beat_id,
+      ...saved,
+    });
+    setResponse(responseKey, saved);
+    const nextIndex = index + 1;
+    if (nextIndex >= beats.length) {
+      persistProgress({stage: "design", evidence_index: nextIndex});
+      renderDesignGate();
+    } else {
+      persistProgress({stage: "evidence", evidence_index: nextIndex});
+      renderEvidenceBeat(nextIndex);
+    }
   });
   section.append(commit);
   app.append(section);
@@ -287,18 +454,32 @@ function renderDesignGate() {
   addText(app, "p", "question", gate.prompt);
   list(app, gate.required_elements, "constraint-list");
 
-  const response = responseBlock(gate.prompt, gate.confidence_prompt);
+  const response = responseBlock("Your proposed mechanism", gate.confidence_prompt);
+  fillResponse(response, storedResponse("design"));
   app.append(response.fragment);
   const commit = primaryButton("Commit the design");
-  commit.disabled = true;
+  commit.disabled = response.textarea.value.trim().length < 20;
   response.textarea.addEventListener("input", () => {
     commit.disabled = response.textarea.value.trim().length < 20;
-  });
-  commit.addEventListener("click", () => {
-    recordEvent("mechanism_proposed", {
-      response: response.textarea.value.trim(),
+    setResponse("design", {
+      response: response.textarea.value,
       confidence: Number(response.slider.value),
     });
+  });
+  response.slider.addEventListener("input", () => {
+    setResponse("design", {
+      response: response.textarea.value,
+      confidence: Number(response.slider.value),
+    });
+  });
+  commit.addEventListener("click", () => {
+    const saved = {
+      response: response.textarea.value.trim(),
+      confidence: Number(response.slider.value),
+    };
+    recordEvent("mechanism_proposed", saved);
+    setResponse("design", saved);
+    persistProgress({stage: "intermission"});
     renderIntermission();
   });
   app.append(commit);
@@ -337,12 +518,20 @@ function renderObjectCards(parent, values, titleField, bodyFields) {
   parent.append(container);
 }
 
-async function revealCase() {
+async function fetchRevealPayload() {
   const response = await fetch(`./${activeRecord.reveal_url}`, {cache: "no-store"});
   if (!response.ok) throw new Error(`Could not load ${activeRecord.reveal_url}`);
-  const payload = await response.json();
+  return response.json();
+}
+
+async function revealCase() {
+  const payload = await fetchRevealPayload();
   recordEvent("title_revealed", {
     concept_id: payload.concept_id,
+  });
+  persistProgress({
+    stage: "reveal",
+    revealed_at: new Date().toISOString(),
   });
   renderReveal(payload);
 }
@@ -423,15 +612,13 @@ function renderReveal(payload) {
     addText(card, "p", "question", lab.task);
     list(card, lab.constraints, "constraint-list");
     const response = responseBlock("Your diagnosis or design", "Confidence");
+    const responseKey = `transfer:${lab.lab_id}`;
+    const savedTransfer = storedResponse(responseKey);
+    fillResponse(response, savedTransfer);
     card.append(response.fragment);
     const solutionButton = element("button", "hint-button", "Commit and compare");
-    solutionButton.addEventListener("click", () => {
-      if (response.textarea.value.trim().length < 12) return;
-      recordEvent("transfer_submitted", {
-        lab_id: lab.lab_id,
-        response: response.textarea.value.trim(),
-        confidence: Number(response.slider.value),
-      });
+    const showSolution = () => {
+      if (card.querySelector(".solution")) return;
       const solution = element("div", "solution");
       addText(solution, "p", "section-label", "Reasoning");
       addText(solution, "p", "", lab.solution.reasoning);
@@ -441,8 +628,39 @@ function renderReveal(payload) {
       addText(solution, "p", "", lab.solution.answer_changes_if);
       card.append(solution);
       solutionButton.disabled = true;
+      response.textarea.disabled = true;
+      response.slider.disabled = true;
+    };
+    response.textarea.addEventListener("input", () => {
+      setResponse(responseKey, {
+        response: response.textarea.value,
+        confidence: Number(response.slider.value),
+        submitted: false,
+      });
+    });
+    response.slider.addEventListener("input", () => {
+      setResponse(responseKey, {
+        response: response.textarea.value,
+        confidence: Number(response.slider.value),
+        submitted: false,
+      });
+    });
+    solutionButton.addEventListener("click", () => {
+      if (response.textarea.value.trim().length < 12) return;
+      const saved = {
+        response: response.textarea.value.trim(),
+        confidence: Number(response.slider.value),
+        submitted: true,
+      };
+      recordEvent("transfer_submitted", {
+        lab_id: lab.lab_id,
+        ...saved,
+      });
+      setResponse(responseKey, saved);
+      showSolution();
     });
     card.append(solutionButton);
+    if (savedTransfer?.submitted) showSolution();
     transfer.append(card);
   }
   app.append(transfer);
@@ -469,18 +687,116 @@ function renderReveal(payload) {
   addText(retention, "p", "section-label", "Retrieval handle");
   addText(retention, "h2", "", payload.retention.retrieval_trigger);
   addText(retention, "p", "", payload.retention.one_sentence_compression);
+  if (currentProgress?.stage === "completed" && currentProgress.review_due_at) {
+    addText(
+      retention,
+      "p",
+      "review-due",
+      currentProgress.review_completed_at
+        ? "Closed-book review completed"
+        : `Closed-book review: ${formatReviewDate(currentProgress.review_due_at)}`,
+    );
+  }
   app.append(retention);
 
   const complete = primaryButton("Close this investigation");
-  complete.addEventListener("click", () => {
-    recordEvent("case_completed", {
-      delayed_probe_days: payload.retention.delayed_probe.delay_days,
-    });
+  if (currentProgress?.stage === "completed") {
     nextCaseButton.hidden = false;
     complete.disabled = true;
     complete.textContent = "Investigation saved";
-  });
+  } else {
+    complete.addEventListener("click", () => {
+      const completedAt = new Date();
+      const delayDays = Number(payload.retention.delayed_probe.delay_days || 4);
+      const dueAt = new Date(
+        completedAt.getTime() + delayDays * 24 * 60 * 60 * 1000,
+      );
+      recordEvent("case_completed", {
+        delayed_probe_days: delayDays,
+        review_due_at: dueAt.toISOString(),
+      });
+      persistProgress({
+        stage: "completed",
+        completed_at: completedAt.toISOString(),
+        review_due_at: dueAt.toISOString(),
+      });
+      statusText.textContent = `Saved · closed-book review ${formatReviewDate(dueAt)}`;
+      nextCaseButton.hidden = false;
+      complete.disabled = true;
+      complete.textContent = "Investigation saved";
+    });
+  }
   app.append(complete);
+  window.scrollTo({top: 0, behavior: "smooth"});
+}
+
+function renderDelayedProbe(payload) {
+  const probe = payload.retention.delayed_probe;
+  app.className = "";
+  app.replaceChildren();
+  statusText.textContent = "Closed-book retrieval is due.";
+
+  const panel = element("section", "review-panel");
+  addText(panel, "p", "review-due", "Delayed review / no notes");
+  addText(panel, "h1", "", "Can the mechanism return on demand?");
+  addText(panel, "p", "lede", probe.changed_context);
+  addText(panel, "p", "question", probe.prompt);
+
+  const response = responseBlock(
+    "Your closed-book reconstruction",
+    "Retrieval confidence",
+  );
+  fillResponse(response, storedResponse("delayed_probe"));
+  panel.append(response.fragment);
+  const submit = primaryButton("Commit closed-book reconstruction");
+  submit.disabled = response.textarea.value.trim().length < 20;
+  response.textarea.addEventListener("input", () => {
+    submit.disabled = response.textarea.value.trim().length < 20;
+    setResponse("delayed_probe", {
+      response: response.textarea.value,
+      confidence: Number(response.slider.value),
+      submitted: false,
+    });
+  });
+  response.slider.addEventListener("input", () => {
+    setResponse("delayed_probe", {
+      response: response.textarea.value,
+      confidence: Number(response.slider.value),
+      submitted: false,
+    });
+  });
+  submit.addEventListener("click", () => {
+    const saved = {
+      response: response.textarea.value.trim(),
+      confidence: Number(response.slider.value),
+      submitted: true,
+    };
+    recordEvent("delayed_retrieval_submitted", saved);
+    setResponse("delayed_probe", saved);
+    persistProgress({
+      stage: "completed",
+      review_completed_at: new Date().toISOString(),
+    });
+    response.textarea.disabled = true;
+    response.slider.disabled = true;
+    submit.disabled = true;
+    submit.textContent = "Reconstruction saved";
+    addText(panel, "p", "section-label", "Self-check criteria");
+    list(panel, probe.success_criteria, "constraint-list");
+    const returnButton = primaryButton("Return to the formalization");
+    returnButton.addEventListener("click", () => renderReveal(payload));
+    panel.append(returnButton);
+    nextCaseButton.hidden = false;
+    statusText.textContent = "Delayed retrieval recorded.";
+  });
+  panel.append(submit);
+  addText(
+    panel,
+    "p",
+    "privacy-note",
+    "This reconstruction stays in this browser and is included in Export.",
+  );
+  app.append(panel);
   window.scrollTo({top: 0, behavior: "smooth"});
 }
 
@@ -513,9 +829,35 @@ async function start() {
 }
 
 nextCaseButton.addEventListener("click", async () => {
+  if (caseIndex.length === 1 && activeCase) {
+    clearProgress(activeCase.case_id);
+  }
   app.className = "";
   await loadCase(drawRecord());
   window.scrollTo({top: 0, behavior: "smooth"});
+});
+
+exportDataButton.addEventListener("click", () => {
+  const payload = {
+    schema_version: "radar-learning-export-v1",
+    exported_at: new Date().toISOString(),
+    privacy: "Browser-local pilot data; no server-side learner account.",
+    attempts: readStored(STORAGE.attempts, []),
+    progress: progressMap(),
+  };
+  const blob = new Blob(
+    [JSON.stringify(payload, null, 2)],
+    {type: "application/json"},
+  );
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `radar-learning-export-${new Date()
+    .toISOString()
+    .slice(0, 10)}.json`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+  statusText.textContent = "Private learning history exported.";
 });
 
 start();
