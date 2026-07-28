@@ -67,6 +67,31 @@ html, body {
 }
 .wordmark span { color: var(--text); }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.lab-link {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--text-2);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+}
+
+.lab-link:active {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
 .counter {
   font-size: 12px;
   font-weight: 600;
